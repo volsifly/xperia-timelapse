@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+ <uses-permission android:name="android.permission.CAMERA"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+ <uses-permission android:name="android.permission.WAKE_LOCK"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+ <uses-feature android:name="android.hardware.camera.any" android:required="true"/>
+ <application android:label="Xperia Timelapse" android:icon="@drawable/ic_launcher" android:dataExtractionRules="@xml/backup_rules" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:fullBackupContent="false" tools:targetApi="31" android:supportsRtl="true">
+  <activity android:name=".ui.MainActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <service android:name=".service.TimelapseForegroundService" android:exported="false" android:foregroundServiceType="camera|dataSync"/>
+  <receiver android:name=".power.CaptureLockAdmin" android:label="拍摄自动锁屏" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true">
+   <meta-data android:name="android.app.device_admin" android:resource="@xml/capture_lock_admin"/>
+   <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/></intent-filter>
+  </receiver>
+  <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/></provider>
+ </application>
+</manifest>

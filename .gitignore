@@ -1,0 +1,16 @@
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+
+# Local device QA artifacts (photos, videos, screenshots and diagnostic dumps)
+docs/*-qa/
+docs/screenshots/
+docs/ui-evidence.json
+
+# Local signing material and credentials
+*.jks
+*.keystore
+.env
+.env.*
