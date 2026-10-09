@@ -39,6 +39,28 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class MainActivity:ComponentActivity() {
+ private val shutterKey=ShutterKeyLatch()
+ private var hardwareShutter:(()->Unit)?=null
+ private var hardwareFocus:(()->Unit)?=null
+ private var focusKeyDown=false
+ private fun logShutterKey(event:android.view.KeyEvent) {
+  if(event.keyCode in listOf(android.view.KeyEvent.KEYCODE_CAMERA,android.view.KeyEvent.KEYCODE_FOCUS) || event.device?.name=="gpio-keys")
+   android.util.Log.i("XperiaShutter","key=${event.keyCode} scan=${event.scanCode} action=${event.action} repeat=${event.repeatCount}")
+ }
+ override fun onKeyDown(keyCode:Int,event:android.view.KeyEvent):Boolean {
+  logShutterKey(event)
+  if(keyCode==android.view.KeyEvent.KEYCODE_FOCUS) {if(!focusKeyDown && event.repeatCount==0) {focusKeyDown=true;hardwareFocus?.invoke()};return true}
+  if(keyCode==android.view.KeyEvent.KEYCODE_CAMERA) {shutterKey.event(event.action,event.repeatCount,event.isCanceled);return true}
+  return super.onKeyDown(keyCode,event)
+ }
+ override fun onKeyUp(keyCode:Int,event:android.view.KeyEvent):Boolean {
+  logShutterKey(event)
+  if(keyCode==android.view.KeyEvent.KEYCODE_FOCUS) {focusKeyDown=false;return true}
+  if(keyCode==android.view.KeyEvent.KEYCODE_CAMERA) {if(shutterKey.event(event.action,event.repeatCount,event.isCanceled))hardwareShutter?.invoke();return true}
+  return super.onKeyUp(keyCode,event)
+ }
+ override fun onWindowFocusChanged(hasFocus:Boolean) {super.onWindowFocusChanged(hasFocus);if(!hasFocus) {shutterKey.reset();focusKeyDown=false}}
+
  private var bound=false
  private var granted by mutableStateOf(false)
  private var service by mutableStateOf<TimelapseForegroundService?>(null)
@@ -100,14 +122,24 @@ class MainActivity:ComponentActivity() {
   var cameraId by remember {mutableStateOf(s.cameraId)}
   var ready by remember {mutableStateOf(s.cameraId.isNotEmpty())}
   var switching by remember {mutableStateOf(false)}
+  var tuningBusy by remember {mutableStateOf(false)}
+  var tuningCaps by remember {mutableStateOf(com.xperia.timelapse.camera.CameraTuningCapabilities())}
+  LaunchedEffect(ready,cameraId,state.busy) {if(ready && !state.busy)tuningCaps=s.camera.tuningCapabilities}
+  fun changeTuning(value:com.xperia.timelapse.camera.CameraTuning) {
+   if(!ready || switching || tuningBusy || state.busy)return
+   tuningBusy=true
+   scope.launch {try {val actual=s.setTuning(value);update(settings.copy(whiteBalanceMode=actual.whiteBalance,exposureEv=actual.ev));error=null}
+    catch(e:Exception){error=e.message}finally{tuningBusy=false}}
+  }
   fun selectLens(id:String,value:Float?) {
-   if(state.busy || switching || (id==cameraId && value==s.aperture && ready))return
+   if(state.busy || switching || tuningBusy || (id==cameraId && value==s.aperture && ready))return
    switching=true;ready=false
-   scope.launch {try {s.openCamera(id,value);cameraId=id;ready=true;error=null}catch(e:Exception){error=e.message}finally{switching=false}}
+   scope.launch {try {s.openCamera(id,value,settings.tuning);cameraId=id;update(settings.copy(whiteBalanceMode=s.camera.tuning.whiteBalance,exposureEv=s.camera.tuning.ev));ready=true;error=null}catch(e:Exception){error=e.message}finally{switching=false}}
   }
   fun selectCamera(id:String)=selectLens(id,null)
   var selectedProject by rememberSaveable {mutableStateOf<String?>(null)}
   var black by rememberSaveable {mutableStateOf(false)}
+  var focusRequest by remember {mutableIntStateOf(0)}
   LaunchedEffect(state.phase,settings.autoBlack) {
    if(!state.busy)black=false
    else if(state.phase==Phase.RUNNING && settings.autoBlack) {
@@ -123,18 +155,41 @@ class MainActivity:ComponentActivity() {
    try {
     cameras=withContext(Dispatchers.IO){repository.all()}
     if(cameraId.isEmpty())cameraId=cameras.filter {it.rear && it.selectable}.sortedWith(compareByDescending<CameraCapabilities>{it.sensorArea}.thenByDescending {it.pixels}).firstOrNull()?.id ?: cameras.first {it.selectable}.id
-    if(!state.busy){ready=false;val initialAperture=s.aperture ?: cameras.firstOrNull {it.id==cameraId}?.apertures?.firstOrNull {kotlin.math.abs(it-2f)<.01f};s.openCamera(cameraId,initialAperture)};ready=true
+    if(!state.busy){ready=false;val initialAperture=s.aperture ?: cameras.firstOrNull {it.id==cameraId}?.apertures?.firstOrNull {kotlin.math.abs(it-2f)<.01f};s.openCamera(cameraId,initialAperture,settings.tuning);update(settings.copy(whiteBalanceMode=s.camera.tuning.whiteBalance,exposureEv=s.camera.tuning.ev))};ready=true
    }catch(e:Exception){error=e.message;ready=false}
   }
   LaunchedEffect(state.phase) {
    if(state.phase in listOf(Phase.COMPLETED,Phase.STOPPED,Phase.ERROR) && cameraId.isNotEmpty()) {
-    try {ready=false;s.openCamera(cameraId,s.aperture);ready=true}catch(e:Exception){error=e.message;ready=false}
+    try {ready=false;s.openCamera(cameraId,s.aperture,settings.tuning);ready=true}catch(e:Exception){error=e.message;ready=false}
    }
   }
   val needsVideo=settings.mode==CaptureMode.TIMELAPSE
   val valid=when(settings.mode){CaptureMode.PHOTO->true;CaptureMode.TIMER->settings.validTimer;CaptureMode.TIMELAPSE->settings.validInterval}
   val encodingReady=!needsVideo || codecs?.let {VideoEncodingPolicy.candidates(settings.preference,it).isNotEmpty()}==true
   val hint=when { !ready->"正在准备相机…";!valid->"请在菜单中完成拍摄设置";needsVideo && codecs==null->"正在检测视频输出能力…";!encodingReady->"当前视频组合不可用，请调整菜单设置";else->null }
+  fun startCapture() {
+   if(!ready || switching || tuningBusy || !valid || !encodingReady || pendingStart)return
+   try {
+    error=null;authorizationError=null
+    if(settings.autoLock && !lockManager.authorized) {pendingStart=true;lockAuthorization.launch(lockManager.authorizationIntent())}
+    else beginCapture()
+   }catch(e:Exception){error=e.message}
+  }
+  val currentHardwareShutter by rememberUpdatedState<()->Unit>({
+   when(s.state.value.phase) {
+    Phase.RUNNING,Phase.PAUSED,Phase.COUNTDOWN->{android.util.Log.i("XperiaShutter","stop-and-save");s.stop()}
+    Phase.PROCESSING,Phase.STOPPING->Unit
+    else->{android.util.Log.i("XperiaShutter","start-request");startCapture()}
+   }
+  })
+  val currentHardwareFocus by rememberUpdatedState<()->Unit>({
+   if(ready && !switching && !tuningBusy && !s.state.value.busy && route==null && !black)focusRequest++
+  })
+  DisposableEffect(s) {
+   hardwareFocus={currentHardwareFocus()}
+   hardwareShutter={currentHardwareShutter()}
+   onDispose {hardwareShutter=null;hardwareFocus=null;shutterKey.reset()}
+  }
   val main=cameras.filter {it.rear && it.selectable}.maxByOrNull {it.sensorArea}
   val lenses=buildList {
    val selectable=cameras.filter {it.selectable}
@@ -148,16 +203,13 @@ class MainActivity:ComponentActivity() {
    selectable.filter {it.rear && main!=null && it.equivalentFocal>main.equivalentFocal*1.1f}.maxByOrNull {it.equivalentFocal}?.let {add(LensShortcut(it.id,"2.1x"))}
    selectable.firstOrNull {!it.rear}?.let {add(LensShortcut(it.id,"前置"))}
   }
-  CameraDashboard(settings,state,s.cameraId,ready&&valid&&encodingReady,hint,state.error ?: error ?: authorizationError,
-   lenses=lenses,selectedAperture=s.aperture,changeInterval={if(!state.busy)update(settings.copy(interval=it))},canSwitchLens=(ready||error!=null)&&!switching&&!state.busy,onLens={selectLens(it.id,it.aperture)},
+  CameraDashboard(settings,state,s.cameraId,ready&&!tuningBusy&&!switching&&valid&&encodingReady,hint,state.error ?: error ?: authorizationError,
+   tuningCapabilities=tuningCaps,canTune=ready&&!switching&&!tuningBusy&&!state.busy,onTuning=::changeTuning,
+   lenses=lenses,selectedAperture=s.aperture,changeInterval={if(!state.busy)update(settings.copy(interval=it))},canSwitchLens=(ready||error!=null)&&!switching&&!tuningBusy&&!state.busy,onLens={selectLens(it.id,it.aperture)},
    changeMode={update(settings.copy(mode=it))},onShutter={
     if(state.busy){if(state.phase==Phase.PAUSED)s.resume() else s.pause()}
-    else try {
-     error=null;authorizationError=null
-     if(settings.autoLock && !lockManager.authorized) {pendingStart=true;lockAuthorization.launch(lockManager.authorizationIntent())}
-     else beginCapture()
-    }catch(e:Exception){error=e.message}
-   },onStop=s::stop,onMenu={route="menu"},onProject={try {openGallery()}catch(e:Exception){error="无法打开相册：${e.message}"}},onBlackScreen={route=null;black=true}) {modifier->CameraPreviewScreen(s,state,cameraId,modifier)}
+    else startCapture()
+   },onStop=s::stop,onMenu={route="menu"},onProject={try {openGallery()}catch(e:Exception){error="无法打开相册：${e.message}"}},onBlackScreen={route=null;black=true}) {modifier->CameraPreviewScreen(s,state,cameraId,modifier,focusRequest)}
   if(black && state.busy)BlackCaptureScreen(this) {black=false}
   route?.let {page->
    val title=when(page){"capture"->"拍摄设置";"video"->"视频输出";"device"->"镜头与设备能力";"files"->"项目列表";"results"->"拍摄结果";"help"->"使用说明";else->"菜单"}
@@ -228,7 +280,7 @@ class MainActivity:ComponentActivity() {
          Text("视频只有在完整校验通过后才会删除原片。希望保留照片，可在视频输出菜单关闭原片清理。单张拍照始终保留照片。")
          Text("设置会自动保存；旋转屏幕会调整布局，不会重新开始拍摄。拍摄中冻结照片输出方向，避免序列随界面旋转而变化。")
          Text("拍摄中点击黑屏省电，双击恢复，开始 30 秒后自动锁屏，锁屏继续拍摄。自动黑屏、锁屏和指示灯提示在拍摄设置中配置。自动锁屏需要一次系统授权，指示灯亮法由系统控制。")
-         Text("版本 0.5.8",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+         Text("版本 0.5.10",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
        }
       }

@@ -7,7 +7,7 @@ import androidx.core.app.ServiceCompat
 import android.content.pm.ServiceInfo
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.lifecycle.LifecycleService
-import com.xperia.timelapse.camera.CameraXController
+import com.xperia.timelapse.camera.*
 import com.xperia.timelapse.data.*
 import com.xperia.timelapse.timelapse.*
 import com.xperia.timelapse.ui.MainActivity
@@ -86,9 +86,13 @@ class TimelapseForegroundService: LifecycleService() {
   if(intent?.action=="STOP") stop()
   return START_NOT_STICKY
  }
- suspend fun openCamera(id:String,selectedAperture:Float?=null) {
+ suspend fun openCamera(id:String,selectedAperture:Float?=null,tuning:CameraTuning=camera.tuning) {
   if(state.value.busy || starting) return
-  ready=false;camera.open(this,id);camera.setAperture(selectedAperture);cameraId=id;aperture=selectedAperture;ready=true
+  ready=false;camera.open(this,id);camera.setAperture(selectedAperture);camera.setTuning(tuning);cameraId=id;aperture=selectedAperture;ready=true
+ }
+ suspend fun setTuning(value:CameraTuning):CameraTuning {
+  check(ready && !starting && !state.value.busy) {"请结束拍摄后调整白平衡和 EV"}
+  return camera.setTuning(value)
  }
  suspend fun focus(point:androidx.camera.core.MeteringPoint):Boolean {
   check(ready && !starting && !state.value.busy) {"拍摄中对焦已锁定，请结束拍摄后调整"}

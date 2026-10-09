@@ -24,11 +24,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.xperia.timelapse.timelapse.*
+import com.xperia.timelapse.camera.*
 import com.xperia.timelapse.util.TimeFormatter
 
 data class LensShortcut(val id:String,val label:String,val aperture:Float?=null)
 private val Amber=Color(0xFFFFC14D)
 @Composable fun CameraDashboard(settings:CaptureSettings,state:TimelapseState,cameraId:String,canStart:Boolean,startHint:String?,error:String?,
+ tuningCapabilities:CameraTuningCapabilities,canTune:Boolean,onTuning:(CameraTuning)->Unit,
  lenses:List<LensShortcut>,selectedAperture:Float?,changeInterval:(String)->Unit,canSwitchLens:Boolean,onLens:(LensShortcut)->Unit,
  changeMode:(CaptureMode)->Unit,onShutter:()->Unit,onStop:()->Unit,onMenu:()->Unit,onProject:()->Unit,onBlackScreen:()->Unit,preview:@Composable (Modifier)->Unit) {
  BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
@@ -49,12 +51,15 @@ private val Amber=Color(0xFFFFC14D)
     }
    }
   }
+  Box(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+62.dp)) {
+   CameraTuningControls(settings.tuning,tuningCapabilities,canTune,onTuning)
+  }
   Row(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+12.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
    lenses.forEach {lens->FilterChip(selected=lens.id==cameraId && lens.aperture==selectedAperture,onClick={onLens(lens)},enabled=canSwitchLens,
     colors=FilterChipDefaults.filterChipColors(containerColor=Color.Black.copy(alpha=.7f),labelColor=Color.White,selectedContainerColor=Amber,selectedLabelColor=Color(0xFF14181D),disabledContainerColor=Color.Black.copy(alpha=.5f),disabledLabelColor=Color.White.copy(alpha=.45f)),
     label={Text(lens.label)},modifier=Modifier.semantics {contentDescription="切换到${lens.label}镜头"})}
   }
-  if(error!=null) Surface(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+68.dp).fillMaxWidth(),color=Color(0xFF492626),shape=RoundedCornerShape(12.dp)) {
+  if(error!=null) Surface(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+116.dp).fillMaxWidth(),color=Color(0xFF492626),shape=RoundedCornerShape(12.dp)) {
    Text(error,Modifier.padding(12.dp),color=Color(0xFFFFD9D9),style=MaterialTheme.typography.bodySmall,maxLines=3,overflow=TextOverflow.Ellipsis)
   }
   if(state.busy)TextButton(onClick=onBlackScreen,modifier=Modifier.align(Alignment.TopEnd).padding(end=rail+16.dp,top=12.dp).background(Color.Black.copy(alpha=.6f),RoundedCornerShape(8.dp))) {Text("黑屏省电",color=Amber)}

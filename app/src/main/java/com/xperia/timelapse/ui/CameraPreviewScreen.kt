@@ -23,7 +23,7 @@ import com.xperia.timelapse.service.TimelapseForegroundService
 import com.xperia.timelapse.timelapse.*
 import com.xperia.timelapse.camera.CameraParameterPolicy
 import kotlinx.coroutines.*
-@Composable fun CameraPreviewScreen(service:TimelapseForegroundService,state:TimelapseState,cameraId:String,modifier:Modifier=Modifier) {
+@Composable fun CameraPreviewScreen(service:TimelapseForegroundService,state:TimelapseState,cameraId:String,modifier:Modifier=Modifier,focusRequest:Int=0) {
  val configuration=LocalConfiguration.current
  val scope=rememberCoroutineScope()
  var view by remember {mutableStateOf<PreviewView?>(null)}
@@ -33,17 +33,7 @@ import kotlinx.coroutines.*
  var job by remember {mutableStateOf<Job?>(null)}
  LaunchedEffect(cameraId,state.busy,configuration.orientation) {job?.cancel();point=null;message=""}
  DisposableEffect(service) { onDispose {job?.cancel();service.camera.preview(null)} }
- Box(modifier.background(Color.Black)) {
-  AndroidView(factory={context->PreviewView(context).apply {
-   implementationMode=PreviewView.ImplementationMode.COMPATIBLE
-   scaleType=PreviewView.ScaleType.FIT_CENTER
-   service.camera.preview(surfaceProvider);view=this
-  }},update={preview->
-   configuration.orientation
-   preview.post {service.camera.setRotation(preview.display?.rotation ?: Surface.ROTATION_0,capture=!state.busy)}
-  },modifier=Modifier.fillMaxSize())
-  Box(Modifier.matchParentSize().semantics {contentDescription="取景画面，点击对焦"}.pointerInput(service,cameraId,state.busy) {
-   detectTapGestures {position->
+ fun focusAt(position:Offset) {
     job?.cancel()
     job=scope.launch {
      if(state.busy) {message="拍摄中对焦已锁定";delay(1800);message="";return@launch}
@@ -62,6 +52,22 @@ import kotlinx.coroutines.*
      }catch(e:CancellationException){throw e}catch(e:Exception){success=false;message=e.message ?: "对焦失败"}
      delay(1800);point=null;message=""
     }
+ }
+ LaunchedEffect(focusRequest) {
+  if(focusRequest>0 && !state.busy)view?.let {focusAt(Offset(it.width/2f,it.height/2f))}
+ }
+ Box(modifier.background(Color.Black)) {
+  AndroidView(factory={context->PreviewView(context).apply {
+   implementationMode=PreviewView.ImplementationMode.COMPATIBLE
+   scaleType=PreviewView.ScaleType.FIT_CENTER
+   service.camera.preview(surfaceProvider);view=this
+  }},update={preview->
+   configuration.orientation
+   preview.post {service.camera.setRotation(preview.display?.rotation ?: Surface.ROTATION_0,capture=!state.busy)}
+  },modifier=Modifier.fillMaxSize())
+  Box(Modifier.matchParentSize().semantics {contentDescription="取景画面，点击对焦"}.pointerInput(service,cameraId,state.busy) {
+   detectTapGestures {position->
+    focusAt(position)
    }
   }) {
    point?.let {position->Canvas(Modifier.matchParentSize()) {
