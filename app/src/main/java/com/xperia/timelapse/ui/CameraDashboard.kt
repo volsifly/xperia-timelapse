@@ -40,7 +40,7 @@ private val Amber=Color(0xFFFFC14D)
   preview(Modifier.fillMaxSize().padding(end=rail,bottom=dock))
   Column(Modifier.align(Alignment.TopStart).padding(top=12.dp,start=16.dp,end=rail+16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
    Surface(color=Color.Black.copy(alpha=.55f),shape=RoundedCornerShape(8.dp)) {
-    Text(if(settings.mode==CaptureMode.TIMELAPSE) "${settings.output.label}  /  ${settings.preference.label}" else settings.summary,
+    Text(if(settings.mode==CaptureMode.TIMELAPSE) "长边 ${settings.resolution.width} · ${settings.fps}fps  /  ${settings.preference.label}" else settings.summary,
      Modifier.padding(8.dp),style=MaterialTheme.typography.labelMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
    }
    if(state.busy || state.capturedFrames>0) Surface(color=Color.Black.copy(alpha=.55f),shape=RoundedCornerShape(8.dp)) {

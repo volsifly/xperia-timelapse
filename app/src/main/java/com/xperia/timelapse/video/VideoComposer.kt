@@ -113,7 +113,8 @@ class VideoComposer {
   if(oriented!==source)source.recycle()
   try {
    val target=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
-   val scale=minOf(width.toFloat()/oriented.width,height.toFloat()/oriented.height)
+   check(oriented.width==width && oriented.height==height) {"照片尺寸与视频不一致，原始照片已保留"}
+   val scale=1f
    val w=oriented.width*scale;val h=oriented.height*scale
    Canvas(target).apply {drawColor(Color.BLACK);drawBitmap(oriented,null,RectF((width-w)/2,(height-h)/2,(width+w)/2,(height+h)/2),Paint(Paint.FILTER_BITMAP_FLAG))}
    return target

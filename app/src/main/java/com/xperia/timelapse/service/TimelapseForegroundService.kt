@@ -120,6 +120,7 @@ class TimelapseForegroundService: LifecycleService() {
   preparation=scope.launch {
    var projectPath:String?=null
    try {
+    camera.captureResolution=config.videoResolution
     val path=projects.create(config,cameraId)
     projectPath=path.absolutePath
     val parameters=withTimeoutOrNull(15_000) { camera.lock(config) }

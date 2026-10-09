@@ -5,10 +5,10 @@ import kotlin.math.abs
 enum class VideoResolution(val label:String,val width:Int,val height:Int) {
  HD("720p",1280,720), FULL_HD("1080p",1920,1080), UHD("4K",3840,2160)
 }
-data class VideoOutput(val resolution:VideoResolution=VideoResolution.FULL_HD,val fps:Int=30) {
- init {require(fps in SUPPORTED_FPS) {"帧率必须为 24、25、30 或 60"}}
- val width get()=resolution.width
- val height get()=resolution.height
+data class VideoOutput(val resolution:VideoResolution=VideoResolution.FULL_HD,val fps:Int=30, val frameWidth:Int=resolution.width, val frameHeight:Int=resolution.height) {
+ init {require(frameWidth>0 && frameHeight>0 && frameWidth%2==0 && frameHeight%2==0);require(fps in SUPPORTED_FPS) {"帧率必须为 24、25、30 或 60"}}
+ val width get()=frameWidth
+ val height get()=frameHeight
  val label get()="${resolution.label} · ${fps}fps"
  fun presentationTimeUs(index:Int):Long {require(index>=0);return index*1_000_000L/fps}
  fun timestampMatches(index:Int,timeUs:Long)=abs(timeUs-presentationTimeUs(index))<=2000

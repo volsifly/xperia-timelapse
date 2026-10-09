@@ -148,7 +148,7 @@ class MainActivity:ComponentActivity() {
    }
   }
   var exporting by remember {mutableStateOf(false)}
-  val output=settings.output
+  val output=s.camera.photoOutput(settings.resolution,settings.fps)
   var codecs by remember(settings.quality,output) {mutableStateOf<Set<VideoEncoding>?>(null)}
   LaunchedEffect(settings.quality,output) {codecs=withContext(Dispatchers.Default){runCatching {VideoComposer().available(settings.quality,output)}.getOrDefault(emptySet())}}
   LaunchedEffect(s) {

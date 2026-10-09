@@ -21,7 +21,7 @@ data class CaptureSettings(
  val estimatedFrames get()=if(!validInterval)null else if(duration)(limit.toLong()*60+interval.toLong()-1)/interval.toLong() else limit.toLong()
  val summary get()=when(mode){CaptureMode.PHOTO->"单张照片";CaptureMode.TIMER->"${timerSeconds} 秒倒计时";CaptureMode.TIMELAPSE->"每 ${interval} 秒 · ${limit} ${if(duration) "分钟" else "张"}"}
  fun config():TimelapseConfig = when(mode) {
-  CaptureMode.PHOTO,CaptureMode.TIMER -> {require(mode!=CaptureMode.TIMER || validTimer);TimelapseConfig(totalFrames=1,delayMs=if(mode==CaptureMode.TIMER)timerSeconds.toLong()*1000 else 0,lockExposure=false,lockFocus=false,lockWhiteBalance=false,autoComposeVideo=false,deleteOriginalPhotos=false)}
+  CaptureMode.PHOTO,CaptureMode.TIMER -> {require(mode!=CaptureMode.TIMER || validTimer);TimelapseConfig(totalFrames=1,delayMs=if(mode==CaptureMode.TIMER)timerSeconds.toLong()*1000 else 0,lockExposure=false,lockFocus=false,lockWhiteBalance=false,videoResolution=resolution,autoComposeVideo=false,deleteOriginalPhotos=false)}
   CaptureMode.TIMELAPSE -> {require(validInterval);TimelapseConfig(intervalMs=interval.toLong()*1000,totalFrames=if(duration)null else limit.toInt(),totalDurationMs=if(duration)limit.toLong()*60000 else null,lockExposure=exposure,lockFocus=focus,lockWhiteBalance=whiteBalance,autoComposeVideo=true,deleteOriginalPhotos=deletePhotos,videoPreference=preference,videoQuality=quality,videoResolution=resolution,videoFrameRate=fps)}
  }
 }

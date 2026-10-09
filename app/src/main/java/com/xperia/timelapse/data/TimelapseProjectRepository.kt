@@ -28,7 +28,7 @@ class TimelapseProjectRepository(context: Context) {
    .put("project_name",directory.name).put("camera_id",cameraId).put("interval_ms",config.intervalMs)
    .put("start_time",Instant.now().toString()).put("frame_count",0).put("format","JPEG")
    .put("target_frames",config.totalFrames ?: JSONObject.NULL).put("duration_ms",config.totalDurationMs ?: JSONObject.NULL)
-   .put("requested_video_resolution","${config.videoOutput.width}x${config.videoOutput.height}").put("requested_video_fps",config.videoFrameRate)
+   .put("requested_capture_long_edge",config.videoResolution.width).put("requested_video_fps",config.videoFrameRate)
    .put("video_preference",config.videoPreference.name).put("video_quality",config.videoQuality.name)
    .put("auto_compose_video",config.autoComposeVideo).put("delete_original_photos",config.deleteOriginalPhotos)
    .put("status","running")
@@ -59,13 +59,15 @@ class TimelapseProjectRepository(context: Context) {
   val frames=(1..state.capturedFrames).map {File(directory,"frame_%06d.jpg".format(it))}
   check(frames.all {it.isFile}) {"照片序列缺失，原始照片已保留"}
   val video=File(directory,"preview.mp4")
+  val output=PhotoVideoGeometry.output(frames.first(),config.videoFrameRate)
+  check(frames.all { PhotoVideoGeometry.output(it,config.videoFrameRate)==output }) {"照片尺寸或方向不一致，原片已保留"}
   try {
-   val maxBitrate=VideoEncodingPolicy.candidates(config.videoPreference,VideoEncoding.values().toSet()).maxOf {VideoEncodingPolicy.bitrate(it,config.videoQuality,config.videoOutput)}
-   check(directory.usableSpace > config.videoOutput.estimatedBytes(state.capturedFrames,maxBitrate)*2+50L*1024*1024) {"没有足够空间合成并保存视频，原始照片已保留"}
+   val maxBitrate=VideoEncodingPolicy.candidates(config.videoPreference,VideoEncoding.values().toSet()).maxOf {VideoEncodingPolicy.bitrate(it,config.videoQuality,output)}
+   check(directory.usableSpace > output.estimatedBytes(state.capturedFrames,maxBitrate)*2+50L*1024*1024) {"没有足够空间合成并保存视频，原始照片已保留"}
    metadata.put("video_status","encoding");write()
-   val result=VideoComposer().compose(frames,video,config.videoPreference,config.videoQuality,config.videoOutput,cancelled,progress)
+   val result=VideoComposer().compose(frames,video,config.videoPreference,config.videoQuality,output,cancelled,progress)
    metadata.put("video_status","verified").put("video_file",video.name).put("video_fps",config.videoFrameRate)
-    .put("video_resolution","${config.videoOutput.width}x${config.videoOutput.height}").put("video_codec",result.encoding.label).put("video_mime",result.encoding.mime)
+    .put("video_resolution","${output.width}x${output.height}").put("video_codec",result.encoding.label).put("video_mime",result.encoding.mime)
     .put("video_bitrate",result.bitrate).put("video_encoder",result.encoderName).put("video_fallback",result.fallback).put("video_frame_count",frames.size);write()
    progress("正在自动保存到相册")
    val uri=gallery.save(video,"${directory.name}.mp4",verified=true,cancelled=cancelled)

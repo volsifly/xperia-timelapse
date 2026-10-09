@@ -16,6 +16,10 @@ import com.xperia.timelapse.video.*
 @Composable fun TimelapseSettingsScreen(s:CaptureSettings,enabled:Boolean,change:(CaptureSettings)->Unit,section:String,codecs:Set<VideoEncoding>?,lockAuthorized:Boolean=false,authorizeLock:()->Unit={}) {
  Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
   if(section=="capture") {
+   Text("拍摄图像大小",style=MaterialTheme.typography.titleMedium)
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {VideoResolution.values().forEach { option -> FilterChip(s.resolution==option,{change(s.copy(resolution=option))},label={Text("${option.width}")},enabled=enabled)}}
+   Text("按所选长边缩放照片，保留画面比例和横竖方向；视频与照片宽高一致。",style=MaterialTheme.typography.bodySmall)
+   HorizontalDivider()
    Text("间隔拍摄",style=MaterialTheme.typography.titleMedium)
    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
     NumberField("间隔 / 秒",s.interval,{change(s.copy(interval=it))},enabled,Modifier.weight(1f))
@@ -45,8 +49,6 @@ import com.xperia.timelapse.video.*
    Text("延时拍摄结束后自动合成视频并保存到相册。",style=MaterialTheme.typography.bodySmall)
    SettingSwitch("合成后删除原片","完整校验通过后永久删除 JPEG",s.deletePhotos,enabled) {change(s.copy(deletePhotos=it))}
    HorizontalDivider()
-   Text("输出分辨率",style=MaterialTheme.typography.titleMedium)
-   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {VideoResolution.values().forEach { option -> FilterChip(s.resolution==option,{change(s.copy(resolution=option))},label={Text(option.label)},enabled=enabled)}}
    Text("输出帧率",style=MaterialTheme.typography.titleMedium)
    Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {VideoOutput.SUPPORTED_FPS.forEach { option -> FilterChip(s.fps==option,{change(s.copy(fps=option))},label={Text("$option")},enabled=enabled)}}
    Text("帧率决定成片播放速度，拍摄间隔单独设置。",style=MaterialTheme.typography.bodySmall)
@@ -63,7 +65,7 @@ import com.xperia.timelapse.video.*
    val predicted=codecs?.let {VideoEncodingPolicy.candidates(s.preference,it).firstOrNull()}
    Text("可用编码：${codecs?.joinToString {it.label} ?: "检测中…"}",style=MaterialTheme.typography.bodySmall)
    if(codecs!=null && predicted==null)Text("当前输出组合不受支持，请调整设置。",color=MaterialTheme.colorScheme.error)
-   if(predicted!=null)Text("${s.output.label} · ${VideoEncodingPolicy.bitrate(predicted,s.quality,s.output)/1_000_000.0} Mbps",style=MaterialTheme.typography.bodySmall)
+   if(predicted!=null)Text("照片长边 ${s.resolution.width} · ${s.fps}fps · 实际编码能力以照片尺寸为准",style=MaterialTheme.typography.bodySmall)
    Text("编码失败会尝试兼容格式；全部失败则保留照片。",style=MaterialTheme.typography.bodySmall)
   }
  }

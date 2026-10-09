@@ -29,6 +29,8 @@ class CameraXController(private val context: Context): CameraController {
   val modes=context.getSystemService(CameraManager::class.java).getCameraCharacteristics(id).get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.toList().orEmpty()
   return CameraTuningCapabilities(WhiteBalanceMode.values().filter {it.requestValue in modes},exposure?.exposureCompensationRange?.lower ?: 0,exposure?.exposureCompensationRange?.upper ?: 0,exposure?.exposureCompensationStep?.toFloat() ?: 0f)
  }
+ var captureResolution=com.xperia.timelapse.video.VideoResolution.FULL_HD
+ private val imageScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
  private var rotation=android.view.Surface.ROTATION_0
  fun setRotation(value:Int,capture:Boolean=true) {rotation=value;previewUseCase.targetRotation=value;if(capture)shot.targetRotation=value}
  private var surface: Preview.SurfaceProvider?=null
@@ -49,6 +51,13 @@ class CameraXController(private val context: Context): CameraController {
  }
  override fun preview(provider: Preview.SurfaceProvider?) { surface=provider; previewUseCase.setSurfaceProvider(provider) }
  val previewResolution get()=previewUseCase.resolutionInfo
+ fun photoOutput(resolution:com.xperia.timelapse.video.VideoResolution,fps:Int):com.xperia.timelapse.video.VideoOutput {
+  val info=shot.resolutionInfo ?: return com.xperia.timelapse.video.VideoOutput(resolution,fps)
+  val size=info.resolution
+  val rotated=info.rotationDegrees%180!=0
+  val dimensions=com.xperia.timelapse.video.CaptureImageGeometry.dimensions(if(rotated)size.height else size.width,if(rotated)size.width else size.height,resolution.width)
+  return com.xperia.timelapse.video.VideoOutput(resolution,fps,dimensions.first,dimensions.second)
+ }
  suspend fun focus(point:MeteringPoint):Boolean {
   val control=checkNotNull(camera) {"相机尚未就绪"}.cameraControl
   val action=FocusMeteringAction.Builder(point,FocusMeteringAction.FLAG_AF).disableAutoCancel().build()
@@ -102,11 +111,17 @@ class CameraXController(private val context: Context): CameraController {
   return next
  }
  override suspend fun capture(file: File): Pair<Int,Int> = suspendCoroutine { cont ->
+  val selectedResolution=captureResolution
   val partial=File(file.parentFile,file.name+".partial")
   shot.takePicture(ImageCapture.OutputFileOptions.Builder(partial).build(),ContextCompat.getMainExecutor(context),object:ImageCapture.OnImageSavedCallback {
    override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-    if(partial.renameTo(file)) cont.resume(shot.resolutionInfo?.resolution?.let { it.width to it.height } ?: (0 to 0))
-    else { partial.delete(); cont.resumeWithException(IllegalStateException("照片保存失败")) }
+    imageScope.launch {
+     try {
+      val size=CaptureImageWriter.normalize(partial,selectedResolution)
+      check(partial.renameTo(file)) {"照片保存失败"}
+      cont.resume(size)
+     } catch(e:Exception) {partial.delete();cont.resumeWithException(e)}
+    }
    }
    override fun onError(exception:ImageCaptureException) { partial.delete(); cont.resumeWithException(exception) }
   })

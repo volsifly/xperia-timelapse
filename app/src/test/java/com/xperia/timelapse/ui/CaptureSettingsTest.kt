@@ -3,6 +3,7 @@ import com.xperia.timelapse.video.*
 import org.junit.Assert.*
 import org.junit.Test
 class CaptureSettingsTest {
+ @Test fun photoAndTimerUseSelectedImageSize() {listOf(CaptureMode.PHOTO,CaptureMode.TIMER).forEach {assertEquals(VideoResolution.HD,CaptureSettings(mode=it,resolution=VideoResolution.HD).config().videoResolution)}}
  @Test fun timelapseAlwaysComposesOnFinish() {assertTrue(CaptureSettings().config().autoComposeVideo)}
  @Test fun photoModeAlwaysPreservesOriginals() {val c=CaptureSettings(mode=CaptureMode.PHOTO,deletePhotos=true).config();assertEquals(1,c.totalFrames);assertFalse(c.autoComposeVideo);assertFalse(c.deleteOriginalPhotos)}
  @Test fun timerUsesSelectedDelayAndPreservesOriginals() {val c=CaptureSettings(mode=CaptureMode.TIMER,timerSeconds="10").config();assertEquals(10000L,c.delayMs);assertFalse(c.deleteOriginalPhotos)}
