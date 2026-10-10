@@ -4,6 +4,10 @@
 
 当前版本：**0.5.20**（versionCode 25）。使用 Kotlin、Jetpack Compose、CameraX、Camera2Interop 和 Android 原生视频编码。最低 Android 10；主要真机验证设备为 Sony PRO-I XQ-BE72 / Android 13，其他设备的镜头、实体按键、编码器和后台行为以实际支持为准。
 
+## 许可证
+
+本项目原创源码采用 [PolyForm Noncommercial 1.0.0](LICENSE)：允许非商业目的下使用、修改和分发，禁止商业用途。它是非商业源代码许可证，不属于 OSI 定义的开源许可证。许可证所列教育、慈善、公共研究、公共安全或健康、环境保护及政府机构用途仍按其条款处理。第三方库继续遵循各自许可证；导入的 LUT 由导入者负责确认授权。APK 内的 `assets/LICENSE` 附有同一许可证文本。
+
 ## 目录
 
 - [功能概览](#功能概览)
