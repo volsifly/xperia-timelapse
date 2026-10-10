@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimelapseSchedulerTest {
+ @Test fun photoIgnoresSixtySecondIntervalAndTimerSettings()=runTest {
+  val times=mutableListOf<Long>()
+  val scheduler=TimelapseScheduler(this,{testScheduler.currentTime},{times+=testScheduler.currentTime},{})
+  scheduler.start(com.xperia.timelapse.ui.CaptureSettings(mode=com.xperia.timelapse.ui.CaptureMode.PHOTO,interval="60",timerSeconds="60").config(),"test")
+  advanceUntilIdle();assertEquals(listOf(0L),times);assertEquals(0L,testScheduler.currentTime)
+ }
+ @Test fun timerIgnoresIntervalAndCountdownAndFinishesImmediately()=runTest {
+  val times=mutableListOf<Long>()
+  val scheduler=TimelapseScheduler(this,{testScheduler.currentTime},{times+=testScheduler.currentTime},{})
+  scheduler.start(com.xperia.timelapse.ui.CaptureSettings(mode=com.xperia.timelapse.ui.CaptureMode.TIMER,interval="60",timerSeconds="60").config(),"test")
+  advanceUntilIdle();assertEquals(listOf(0L),times);assertEquals(0L,testScheduler.currentTime)
+ }
  @Test fun compensatesCaptureTime()=runTest {
   val times=mutableListOf<Long>(); var final:TimelapseState?=null
   val s=TimelapseScheduler(this,{testScheduler.currentTime},{times+=testScheduler.currentTime;delay(470)},{final=it})

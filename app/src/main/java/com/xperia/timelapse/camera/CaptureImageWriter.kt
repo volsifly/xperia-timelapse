@@ -8,7 +8,7 @@ import java.io.FileOutputStream
 
 /** Persist display-oriented pixels so photos and video share one geometry. */
 object CaptureImageWriter {
- fun normalize(file:File,resolution:VideoResolution):Pair<Int,Int> {
+ fun normalize(file:File,resolution:VideoResolution,look:com.xperia.timelapse.color.ColorLook=com.xperia.timelapse.color.ColorLook()):Pair<Int,Int> {
   val exif=ExifInterface(file)
   val source=BitmapFactory.decodeFile(file.absolutePath) ?: error("照片无法解码")
   var oriented:Bitmap?=null
@@ -18,7 +18,10 @@ object CaptureImageWriter {
    val matrix=Matrix().apply {if(exif.isFlipped)postScale(-1f,1f);postRotate(exif.rotationDegrees.toFloat())}
    val image=Bitmap.createBitmap(source,0,0,source.width,source.height,matrix,true);oriented=image
    val size=CaptureImageGeometry.dimensions(image.width,image.height,resolution.width)
-   val output=Bitmap.createScaledBitmap(image,size.first,size.second,true);resized=output
+   val scaled=Bitmap.createScaledBitmap(image,size.first,size.second,true);resized=scaled
+   val output=com.xperia.timelapse.color.ColorLookRenderer.apply(scaled,look)
+   if(output!==scaled && scaled!==image && scaled!==source)scaled.recycle()
+   resized=output
    FileOutputStream(temp).use {check(output.compress(Bitmap.CompressFormat.JPEG,95,it)) {"照片编码失败"};it.fd.sync()}
    val saved=ExifInterface(temp)
    listOf(ExifInterface.TAG_DATETIME,ExifInterface.TAG_DATETIME_ORIGINAL,ExifInterface.TAG_MAKE,ExifInterface.TAG_MODEL,

@@ -30,7 +30,7 @@ import com.xperia.timelapse.util.TimeFormatter
 data class LensShortcut(val id:String,val label:String,val aperture:Float?=null)
 private val Amber=Color(0xFFFFC14D)
 @Composable fun CameraDashboard(settings:CaptureSettings,state:TimelapseState,cameraId:String,canStart:Boolean,startHint:String?,error:String?,
- tuningCapabilities:CameraTuningCapabilities,canTune:Boolean,onTuning:(CameraTuning)->Unit,
+ tuningCapabilities:CameraTuningCapabilities,canTune:Boolean,onColorLook:(com.xperia.timelapse.color.ColorLook)->Unit,onTuning:(CameraTuning)->Unit,
  lenses:List<LensShortcut>,selectedAperture:Float?,changeInterval:(String)->Unit,canSwitchLens:Boolean,onLens:(LensShortcut)->Unit,
  changeMode:(CaptureMode)->Unit,onShutter:()->Unit,onStop:()->Unit,onMenu:()->Unit,onProject:()->Unit,onBlackScreen:()->Unit,preview:@Composable (Modifier)->Unit) {
  BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
@@ -43,23 +43,27 @@ private val Amber=Color(0xFFFFC14D)
     Text(if(settings.mode==CaptureMode.TIMELAPSE) "长边 ${settings.resolution.width} · ${settings.fps}fps  /  ${settings.preference.label}" else settings.summary,
      Modifier.padding(8.dp),style=MaterialTheme.typography.labelMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
    }
-   if(state.busy || state.capturedFrames>0) Surface(color=Color.Black.copy(alpha=.55f),shape=RoundedCornerShape(8.dp)) {
+   if(selectedAperture!=null && lenses.count {it.id==cameraId && it.aperture!=null}>1) {
+    Text("主摄 F$selectedAperture · 点按对焦测光",color=Amber,style=MaterialTheme.typography.labelSmall)
+   }
+   if(state.busy || state.capturedFrames>0 || state.processingMessage!=null) Surface(color=Color.Black.copy(alpha=.55f),shape=RoundedCornerShape(8.dp)) {
     Column(Modifier.padding(10.dp)) {
      Text("${state.capturedFrames} / ${state.targetFrames ?: "—"} 张",style=MaterialTheme.typography.titleMedium)
-     Text(state.processingMessage ?: if(state.phase==Phase.PAUSED)"已暂停" else if(state.busy)"下一张 ${(state.nextCaptureInMs+999)/1000}s · 结束 ${TimeFormatter.end(state.estimatedEndMs)}" else "照片已保存",style=MaterialTheme.typography.bodySmall)
+     Text(state.processingMessage ?: if(state.phase==Phase.PAUSED)"已暂停" else if(state.busy && settings.mode!=CaptureMode.TIMELAPSE)"正在拍摄与保存…" else if(state.busy)"下一张 ${(state.nextCaptureInMs+999)/1000}s · 结束 ${TimeFormatter.end(state.estimatedEndMs)}" else "照片已保存",style=MaterialTheme.typography.bodySmall)
      if(state.busy && state.targetFrames!=null && state.targetFrames>0)LinearProgressIndicator(progress=(state.capturedFrames.toFloat()/state.targetFrames).coerceIn(0f,1f),modifier=Modifier.padding(top=8.dp).width(164.dp),color=Amber)
     }
    }
   }
-  Box(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+62.dp)) {
+  Column(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+62.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
    CameraTuningControls(settings.tuning,tuningCapabilities,canTune,onTuning)
+   ColorLookControls(settings.colorLook,canTune,onColorLook)
   }
   Row(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+12.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
    lenses.forEach {lens->FilterChip(selected=lens.id==cameraId && lens.aperture==selectedAperture,onClick={onLens(lens)},enabled=canSwitchLens,
     colors=FilterChipDefaults.filterChipColors(containerColor=Color.Black.copy(alpha=.7f),labelColor=Color.White,selectedContainerColor=Amber,selectedLabelColor=Color(0xFF14181D),disabledContainerColor=Color.Black.copy(alpha=.5f),disabledLabelColor=Color.White.copy(alpha=.45f)),
     label={Text(lens.label)},modifier=Modifier.semantics {contentDescription="切换到${lens.label}镜头"})}
   }
-  if(error!=null) Surface(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+116.dp).fillMaxWidth(),color=Color(0xFF492626),shape=RoundedCornerShape(12.dp)) {
+  if(error!=null) Surface(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+152.dp).fillMaxWidth(),color=Color(0xFF492626),shape=RoundedCornerShape(12.dp)) {
    Text(error,Modifier.padding(12.dp),color=Color(0xFFFFD9D9),style=MaterialTheme.typography.bodySmall,maxLines=3,overflow=TextOverflow.Ellipsis)
   }
   if(state.busy)TextButton(onClick=onBlackScreen,modifier=Modifier.align(Alignment.TopEnd).padding(end=rail+16.dp,top=12.dp).background(Color.Black.copy(alpha=.6f),RoundedCornerShape(8.dp))) {Text("黑屏省电",color=Amber)}
@@ -85,7 +89,7 @@ private val Amber=Color(0xFFFFC14D)
   }
   Text(if(state.busy) state.processingMessage ?: state.phase.label else s.summary,style=MaterialTheme.typography.bodySmall,color=Color(0xFFB4BDC6),maxLines=2,overflow=TextOverflow.Ellipsis)
   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(if(landscape)12.dp else 36.dp)) {
-   if(!landscape) Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.width(62.dp)) {Text(if(s.mode==CaptureMode.TIMELAPSE)"${s.interval}s" else if(s.mode==CaptureMode.TIMER)"${s.timerSeconds}s" else "1 张",style=MaterialTheme.typography.titleMedium);Text("${if(s.mode==CaptureMode.TIMELAPSE)"间隔" else "拍摄"}",style=MaterialTheme.typography.labelSmall,color=Color.Gray)}
+   if(!landscape) Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.width(62.dp)) {Text(if(s.mode==CaptureMode.TIMELAPSE)"${s.interval}s" else "1 张",style=MaterialTheme.typography.titleMedium);Text("${if(s.mode==CaptureMode.TIMELAPSE)"间隔" else "拍摄"}",style=MaterialTheme.typography.labelSmall,color=Color.Gray)}
    val active=if(state.busy)pauseAllowed else canStart
    Box(Modifier.size(if(landscape || androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp<580)80.dp else 88.dp).border(2.dp,if(active)Color.White else Color.Gray,CircleShape).padding(6.dp)
     .background(if(active)Amber else Color(0xFF40454C),CircleShape).clickable(enabled=active,role=Role.Button,onClick=shutter)

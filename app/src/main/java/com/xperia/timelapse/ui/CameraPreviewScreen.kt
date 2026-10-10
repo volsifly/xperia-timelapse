@@ -23,8 +23,10 @@ import com.xperia.timelapse.service.TimelapseForegroundService
 import com.xperia.timelapse.timelapse.*
 import com.xperia.timelapse.camera.CameraParameterPolicy
 import kotlinx.coroutines.*
-@Composable fun CameraPreviewScreen(service:TimelapseForegroundService,state:TimelapseState,cameraId:String,modifier:Modifier=Modifier,focusRequest:Int=0) {
+@Composable fun CameraPreviewScreen(service:TimelapseForegroundService,state:TimelapseState,cameraId:String,modifier:Modifier=Modifier,focusRequest:Int=0,colorLook:com.xperia.timelapse.color.ColorLook=com.xperia.timelapse.color.ColorLook()) {
  val configuration=LocalConfiguration.current
+ var previewError by remember {mutableStateOf(false)}
+ val previewEffect=remember(colorLook) {colorLook}
  val scope=rememberCoroutineScope()
  var view by remember {mutableStateOf<PreviewView?>(null)}
  var point by remember {mutableStateOf<Offset?>(null)}
@@ -45,10 +47,10 @@ import kotlinx.coroutines.*
       if(rotated)info.resolution.height else info.resolution.width,if(rotated)info.resolution.width else info.resolution.height)
      if(normalized==null) {point=null;message="请点击取景画面，对黑边无法对焦";delay(1800);message="";return@launch}
      android.util.Log.i("XperiaFocus","tap=$position frame=$normalized camera=$cameraId")
-     point=position;success=null;message="正在对焦"
+     point=position;success=null;message="正在对焦并测光"
      try {
       success=service.focus(preview.meteringPointFactory.createPoint(position.x,position.y))
-      message=if(success==true)"已对焦" else "未合焦，请换个位置"
+      message=if(success==true)"已对焦并测光" else "已测光，未合焦，请换个位置"
      }catch(e:CancellationException){throw e}catch(e:Exception){success=false;message=e.message ?: "对焦失败"}
      delay(1800);point=null;message=""
     }
@@ -63,9 +65,14 @@ import kotlinx.coroutines.*
    service.camera.preview(surfaceProvider);view=this
   }},update={preview->
    configuration.orientation
+   val resolution=service.camera.previewResolution
+   val rotated=resolution?.rotationDegrees?.rem(180)!=0
+   previewError=runCatching {com.xperia.timelapse.color.ColorLookRenderer.preview(preview,previewEffect,
+    if(rotated)resolution?.resolution?.height ?: 0 else resolution?.resolution?.width ?: 0,
+    if(rotated)resolution?.resolution?.width ?: 0 else resolution?.resolution?.height ?: 0)}.isFailure
    preview.post {service.camera.setRotation(preview.display?.rotation ?: Surface.ROTATION_0,capture=!state.busy)}
   },modifier=Modifier.fillMaxSize())
-  Box(Modifier.matchParentSize().semantics {contentDescription="取景画面，点击对焦"}.pointerInput(service,cameraId,state.busy) {
+  Box(Modifier.matchParentSize().semantics {contentDescription="取景画面，点击对焦并测光"}.pointerInput(service,cameraId,state.busy) {
    detectTapGestures {position->
     focusAt(position)
    }
@@ -79,6 +86,7 @@ import kotlinx.coroutines.*
    }}
    if(message.isNotEmpty())Text(message,Modifier.align(Alignment.BottomCenter).padding(bottom=72.dp).background(Color.Black.copy(alpha=.65f)).padding(8.dp),color=Color.White,style=MaterialTheme.typography.labelMedium)
   }
+  if(previewError)Text("色彩预览不可用；拍摄仍应用所选效果",Modifier.align(Alignment.BottomCenter).padding(8.dp),color=Color.White)
   if(state.phase==Phase.COUNTDOWN && state.nextCaptureInMs>0)CountdownOverlay(state.nextCaptureInMs,Modifier.align(Alignment.Center))
  }
 }

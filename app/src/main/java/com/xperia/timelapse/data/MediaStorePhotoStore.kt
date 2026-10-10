@@ -11,7 +11,7 @@ import com.xperia.timelapse.video.GalleryVideoStore
 class MediaStorePhotoStore(context:Context):GalleryVideoStore {
  private val resolver=context.contentResolver
  override fun create(name:String):String=checkNotNull(resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),ContentValues().apply {
-  put(MediaStore.Images.Media.DISPLAY_NAME,name);put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg")
+  put(MediaStore.Images.Media.DISPLAY_NAME,name);put(MediaStore.Images.Media.MIME_TYPE,if(name.endsWith(".dng",true))"image/x-adobe-dng" else "image/jpeg")
   put(MediaStore.Images.Media.RELATIVE_PATH,"${Environment.DIRECTORY_PICTURES}/XperiaTimelapse")
   put(MediaStore.Images.Media.DATE_TAKEN,System.currentTimeMillis());put(MediaStore.Images.Media.IS_PENDING,1)
  })) {"无法创建相册照片，原片已保留"}.toString()

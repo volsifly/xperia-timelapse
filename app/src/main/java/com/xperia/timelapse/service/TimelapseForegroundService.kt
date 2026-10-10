@@ -22,6 +22,13 @@ class TimelapseForegroundService: LifecycleService() {
  private lateinit var projects: TimelapseProjectRepository
  private lateinit var scheduler: TimelapseScheduler
  private var wake: PowerManager.WakeLock?=null
+ private var shutterTimestamp=0L
+ private var focusRequests=0
+ private val metering=MutableStateFlow(false)
+ val focusBusy=metering.asStateFlow()
+ private var queuedCapture:(()->Unit)?=null
+ private var pendingParameters:org.json.JSONObject?=null
+ private val preparationTrace=mutableListOf<String>()
  private var starting=false
  private var preparation:Job?=null
  private var stopRequested=false
@@ -39,6 +46,7 @@ class TimelapseForegroundService: LifecycleService() {
  var cameraId=""; private set
  var aperture:Float?=null; private set
  private var ready=false
+ val previewReady get()=ready
  override fun onCreate() {
   super.onCreate()
   indicator=CaptureIndicator(this)
@@ -47,14 +55,34 @@ class TimelapseForegroundService: LifecycleService() {
    runCatching {lockManager.lock()}.onFailure {android.util.Log.e("XperiaPower","自动锁屏失败",it)}
   }
   camera=CameraXController(this);projects=TimelapseProjectRepository(this)
+  camera.onCaptureStage={stage,time->scope.launch {
+   val elapsed=time-shutterTimestamp
+   if(uiState.value.busy && !autoVideo)uiState.value=uiState.value.copy(processingMessage=when(stage) {
+    "request"->"已发出拍摄请求"
+    "capture_started"->"相机已开始拍摄"
+    "camera_saved"->"照片已拍下，正在处理色彩"
+    "processed"->"正在保存到相册"
+    else->uiState.value.processingMessage ?: "正在拍摄"
+   })
+   if(stage=="request") {
+    val trace=preparationTrace.toList();preparationTrace.clear()
+    runCatching {projects.log(trace.joinToString("\n"))}
+   }
+   runCatching {projects.log("shutter_elapsed_ms=$elapsed stage=$stage")}
+  }}
   scheduler=TimelapseScheduler(scope,{SystemClock.elapsedRealtime()}, { index ->
-   val resolution=camera.capture(projects.frame(index)); projects.captured(index,resolution.first,resolution.second)
+   val resolution=camera.capture(projects.frame(index)); projects.captured(index,resolution.first,resolution.second,camera.lastCapturedAperture,pendingParameters);pendingParameters=null
   }, { s ->
    lockSchedule.update(s.phase,autoLock)
-   camera.close();ready=false
+   var keepPreview=!autoVideo && s.phase in listOf(Phase.COMPLETED,Phase.STOPPED)
+   if(!keepPreview) {camera.close();ready=false}
    try {
-    projects.finish(s)
-    projects.publishPhotos(s)
+    coroutineScope {
+     val metadata=async {projects.finish(s)}
+     val photos=async {projects.publishPhotos(s)}
+     awaitAll(metadata,photos)
+    }
+    projects.awaitMetadata()
     if(autoVideo && s.capturedFrames>=2 && s.phase in listOf(Phase.COMPLETED,Phase.STOPPED)) {
      val initial=s.copy(phase=Phase.PROCESSING,nextCaptureInMs=0,estimatedEndMs=null,processingMessage="准备合成视频")
      uiState.value=initial;indicator.update(initial.phase,indicatorEnabled)
@@ -66,17 +94,18 @@ class TimelapseForegroundService: LifecycleService() {
      savedVideo=true
     }
    } catch(e:Exception) {
+    keepPreview=false
     runCatching {projects.finish(s.copy(phase=Phase.ERROR,error=e.message))};throw e
    } finally {
     wake?.let { if(it.isHeld) it.release() }; wake=null
-    camera.close();ready=false
+    if(!keepPreview) {camera.close();ready=false}
     if(foreground) stopForeground(STOP_FOREGROUND_REMOVE)
     foreground=false;stopSelf()
    }
   }, { projects.log(it) })
   getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("capture","延时拍摄",NotificationManager.IMPORTANCE_LOW))
   scope.launch { scheduler.state.collect {
-   val displayed=if(savedVideo && it.phase in listOf(Phase.COMPLETED,Phase.STOPPED))it.copy(processingMessage="视频已保存到相册") else it
+   val displayed=if(savedVideo && it.phase in listOf(Phase.COMPLETED,Phase.STOPPED))it.copy(processingMessage="视频已保存到相册") else if(!autoVideo && it.phase in listOf(Phase.COMPLETED,Phase.STOPPED))it.copy(processingMessage=camera.apertureWarning ?: camera.lastCapturedAperture?.let {f->"照片已保存 · 实际 F$f"}) else it
    uiState.value=displayed;lockSchedule.update(displayed.phase,autoLock);indicator.update(displayed.phase,indicatorEnabled);if(foreground)notifyState(displayed)
   } }
  }
@@ -90,17 +119,39 @@ class TimelapseForegroundService: LifecycleService() {
   if(state.value.busy || starting) return
   ready=false;camera.open(this,id);camera.setAperture(selectedAperture);camera.setTuning(tuning);cameraId=id;aperture=selectedAperture;ready=true
  }
+ suspend fun setAperture(value:Float?) {
+  check(ready && !starting && !state.value.busy && focusRequests==0) {"请等待对焦测光完成后切换光圈"}
+  camera.setAperture(value);aperture=value
+ }
+ suspend fun prepareCapture(config:TimelapseConfig) {
+  check(ready && !starting && !state.value.busy && focusRequests==0) {"请等待对焦测光完成后准备相机"}
+  ready=false
+  try {camera.prepareFormat(this,config)}finally {ready=true}
+ }
  suspend fun setTuning(value:CameraTuning):CameraTuning {
-  check(ready && !starting && !state.value.busy) {"请结束拍摄后调整白平衡和 EV"}
+  check(ready && !starting && !state.value.busy && focusRequests==0) {"请等待对焦测光完成后调整白平衡和 EV"}
   return camera.setTuning(value)
  }
  suspend fun focus(point:androidx.camera.core.MeteringPoint):Boolean {
   check(ready && !starting && !state.value.busy) {"拍摄中对焦已锁定，请结束拍摄后调整"}
-  return camera.focus(point)
+  focusRequests++;metering.value=true
+  var completed=false
+  try {return camera.focus(point).also {completed=true}}
+  finally {
+   focusRequests--;metering.value=focusRequests>0
+   if(focusRequests==0) {
+    val pending=queuedCapture;queuedCapture=null
+    if(completed)pending?.invoke()
+    else if(pending!=null)uiState.value=uiState.value.copy(processingMessage="对焦测光未完成，未拍摄，请重试")
+   }
+  }
  }
- fun begin(config:TimelapseConfig,showIndicator:Boolean=true,lockAfter30Seconds:Boolean=false) {
+ fun begin(config:TimelapseConfig,showIndicator:Boolean=true,lockAfter30Seconds:Boolean=false,requestedAt:Long=SystemClock.elapsedRealtime()) {
   if(starting || state.value.busy) return
+  if(focusRequests>0) {queuedCapture={begin(config,showIndicator,lockAfter30Seconds,requestedAt)};uiState.value=uiState.value.copy(processingMessage="对焦测光完成后拍摄");return}
   if(!ready) { uiState.value=TimelapseState(Phase.ERROR,error="等待相机预览就绪后再拍摄");return }
+  pendingParameters=null;preparationTrace.clear()
+  shutterTimestamp=requestedAt
   autoLock=lockAfter30Seconds
   lockSchedule.update(Phase.COUNTDOWN,autoLock)
   indicatorEnabled=showIndicator
@@ -117,21 +168,28 @@ class TimelapseForegroundService: LifecycleService() {
    if(foreground)stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;stopSelf();return
   }
   uiState.value=TimelapseState(Phase.COUNTDOWN)
+  val shutterTime=SystemClock.elapsedRealtime()
   preparation=scope.launch {
    var projectPath:String?=null
    try {
+    camera.prepareFormat(this@TimelapseForegroundService,config)
     camera.captureResolution=config.videoResolution
-    val path=projects.create(config,cameraId)
+    camera.colorLook=config.colorLook
+    val path=projects.create(config,cameraId,deferMetadata=!config.autoComposeVideo)
     projectPath=path.absolutePath
+    preparationTrace+="shutter_elapsed_ms=${SystemClock.elapsedRealtime()-shutterTimestamp} stage=prepared"
     val parameters=withTimeoutOrNull(15_000) { camera.lock(config) }
      ?: throw IllegalStateException("相机准备超时，请重新开始拍摄")
-    projects.parameters(parameters)
+    if(config.autoComposeVideo) {projects.parameters(parameters);projects.awaitMetadata()} else pendingParameters=parameters
     if(stopRequested) {
      val terminal=TimelapseState(Phase.STOPPED,projectPath=path.absolutePath)
      projects.finish(terminal);wake?.let {if(it.isHeld)it.release()};wake=null;camera.close();ready=false;stopForeground(STOP_FOREGROUND_REMOVE);foreground=false;stopSelf()
      starting=false;uiState.value=terminal;return@launch
     }
-    scheduler.start(config,path.absolutePath)
+    // Timer deadline begins at the shutter press, not after camera preparation.
+    val remainingDelay=(config.delayMs-(SystemClock.elapsedRealtime()-shutterTime)).coerceAtLeast(0)
+    preparationTrace+="shutter_elapsed_ms=${SystemClock.elapsedRealtime()-shutterTimestamp} stage=scheduler_start delay_ms=$remainingDelay"
+    scheduler.start(config.copy(delayMs=remainingDelay),path.absolutePath)
    } catch(e:Exception) {
     val terminal=TimelapseState(if(stopRequested)Phase.STOPPED else Phase.ERROR,projectPath=projectPath,error=if(stopRequested)null else e.message)
     withContext(NonCancellable) {
@@ -144,7 +202,7 @@ class TimelapseForegroundService: LifecycleService() {
  }
  fun pause()=scheduler.pause()
  fun resume()=scheduler.resume()
- fun stop() { if(state.value.phase==Phase.PROCESSING) {cancelComposition.set(true);return}; stopRequested=true; if(starting)preparation?.cancel() else scheduler.stop() }
+ fun stop() { queuedCapture=null;if(state.value.phase==Phase.PROCESSING) {cancelComposition.set(true);return}; stopRequested=true; if(starting)preparation?.cancel() else scheduler.stop() }
  private fun notification(s:TimelapseState):Notification {
   val open=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
   val stop=PendingIntent.getService(this,1,Intent(this,javaClass).setAction("STOP"),PendingIntent.FLAG_IMMUTABLE)

@@ -2,6 +2,7 @@ package com.xperia.timelapse.timelapse
 import com.xperia.timelapse.video.*
 
 data class TimelapseConfig(
+ val saveRaw:Boolean=false,val colorLook:com.xperia.timelapse.color.ColorLook=com.xperia.timelapse.color.ColorLook(),
  val intervalMs: Long = 2000, val totalFrames: Int? = 100,
  val totalDurationMs: Long? = null, val delayMs: Long = 0,
  val lockExposure: Boolean = true, val lockFocus: Boolean = true,

@@ -16,6 +16,7 @@ import com.xperia.timelapse.video.*
 @Composable fun TimelapseSettingsScreen(s:CaptureSettings,enabled:Boolean,change:(CaptureSettings)->Unit,section:String,codecs:Set<VideoEncoding>?,lockAuthorized:Boolean=false,authorizeLock:()->Unit={}) {
  Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
   if(section=="capture") {
+   SettingSwitch("保存 RAW / DNG","保留未调色的传感器原片；原片不缩放、不自动删除。延时视频另用临时 JPEG 合成。",s.saveRaw,enabled) {change(s.copy(saveRaw=it))}
    Text("拍摄图像大小",style=MaterialTheme.typography.titleMedium)
    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {VideoResolution.values().forEach { option -> FilterChip(s.resolution==option,{change(s.copy(resolution=option))},label={Text("${option.width}")},enabled=enabled)}}
    Text("按所选长边缩放照片，保留画面比例和横竖方向；视频与照片宽高一致。",style=MaterialTheme.typography.bodySmall)
@@ -28,10 +29,8 @@ import com.xperia.timelapse.video.*
    SettingSwitch("按时长结束","关闭时按总张数结束",s.duration,enabled) {change(s.copy(duration=it))}
    if(!s.validInterval) Text("间隔 1～3600 秒；张数 1～100000 或时长 1～1440 分钟。",color=MaterialTheme.colorScheme.error)
    HorizontalDivider()
-   Text("定时拍照",style=MaterialTheme.typography.titleMedium)
-   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {listOf(3,5,10).forEach { value -> FilterChip(s.timerSeconds==value.toString(),{change(s.copy(timerSeconds=value.toString()))},label={Text("${value}s")},enabled=enabled)}}
-   NumberField("自定义倒计时 / 秒",s.timerSeconds,{change(s.copy(timerSeconds=it))},enabled)
-   if(!s.validTimer)Text("倒计时为 0～86400 秒。",color=MaterialTheme.colorScheme.error)
+   Text("单张与定时拍照",style=MaterialTheme.typography.titleMedium)
+   Text("按下快门立即拍摄一张，不等待间隔或倒计时；间隔仅用于延时连续拍摄。",style=MaterialTheme.typography.bodySmall)
    HorizontalDivider()
    Text("省电与状态提示",style=MaterialTheme.typography.titleMedium)
    SettingSwitch("开始 5 秒后自动黑屏","双击恢复界面；开始后 30 秒可自动锁屏",s.autoBlack,enabled) {change(s.copy(autoBlack=it))}
@@ -47,7 +46,7 @@ import com.xperia.timelapse.video.*
    SettingSwitch("锁定白平衡","减少连续照片的色彩变化",s.whiteBalance,enabled) {change(s.copy(whiteBalance=it))}
   } else {
    Text("延时拍摄结束后自动合成视频并保存到相册。",style=MaterialTheme.typography.bodySmall)
-   SettingSwitch("合成后删除原片","完整校验通过后永久删除 JPEG",s.deletePhotos,enabled) {change(s.copy(deletePhotos=it))}
+   SettingSwitch(if(s.saveRaw)"合成后清理临时 JPEG" else "合成后删除原片",if(s.saveRaw)"RAW / DNG 原片始终保留" else "完整校验通过后永久删除 JPEG",s.deletePhotos,enabled) {change(s.copy(deletePhotos=it))}
    HorizontalDivider()
    Text("输出帧率",style=MaterialTheme.typography.titleMedium)
    Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {VideoOutput.SUPPORTED_FPS.forEach { option -> FilterChip(s.fps==option,{change(s.copy(fps=option))},label={Text("$option")},enabled=enabled)}}

@@ -123,20 +123,34 @@ class MainActivity:ComponentActivity() {
   var ready by remember {mutableStateOf(s.cameraId.isNotEmpty())}
   var switching by remember {mutableStateOf(false)}
   var tuningBusy by remember {mutableStateOf(false)}
+  var formatBusy by remember {mutableStateOf(false)}
+  val focusBusy by s.focusBusy.collectAsState()
+  var preparedFormat by remember {mutableStateOf<Triple<String,CaptureMode,Boolean>?>(null)}
+  val formatReady=preparedFormat==Triple(cameraId,settings.mode,settings.saveRaw)
   var tuningCaps by remember {mutableStateOf(com.xperia.timelapse.camera.CameraTuningCapabilities())}
   LaunchedEffect(ready,cameraId,state.busy) {if(ready && !state.busy)tuningCaps=s.camera.tuningCapabilities}
   fun changeTuning(value:com.xperia.timelapse.camera.CameraTuning) {
-   if(!ready || switching || tuningBusy || state.busy)return
+   if(!ready || switching || tuningBusy || formatBusy || focusBusy || state.busy)return
    tuningBusy=true
    scope.launch {try {val actual=s.setTuning(value);update(settings.copy(whiteBalanceMode=actual.whiteBalance,exposureEv=actual.ev));error=null}
     catch(e:Exception){error=e.message}finally{tuningBusy=false}}
   }
   fun selectLens(id:String,value:Float?) {
-   if(state.busy || switching || tuningBusy || (id==cameraId && value==s.aperture && ready))return
+   if(state.busy || switching || tuningBusy || formatBusy || focusBusy || (id==cameraId && value==s.aperture && ready))return
    switching=true;ready=false
-   scope.launch {try {s.openCamera(id,value,settings.tuning);cameraId=id;update(settings.copy(whiteBalanceMode=s.camera.tuning.whiteBalance,exposureEv=s.camera.tuning.ev));ready=true;error=null}catch(e:Exception){error=e.message}finally{switching=false}}
+   scope.launch {try {if(id==cameraId && s.previewReady)s.setAperture(value) else s.openCamera(id,value,settings.tuning);cameraId=id;update(settings.copy(whiteBalanceMode=s.camera.tuning.whiteBalance,exposureEv=s.camera.tuning.ev));ready=true;error=null}catch(e:Exception){error=e.message}finally{switching=false}}
   }
   fun selectCamera(id:String)=selectLens(id,null)
+  // Prepare the selected sensor output while viewing, rather than on shutter press.
+  LaunchedEffect(ready,cameraId,settings.mode,settings.saveRaw,state.busy,switching,tuningBusy,focusBusy) {
+   if(ready && !state.busy && !switching && !tuningBusy && !focusBusy) {
+    formatBusy=true;preparedFormat=null
+    try {s.prepareCapture(settings.copy(interval="2",limit="1").config());preparedFormat=Triple(cameraId,settings.mode,settings.saveRaw);error=null}
+    catch(e:kotlinx.coroutines.CancellationException){throw e}
+    catch(e:Exception){error=e.message}
+    finally {formatBusy=false}
+   }
+  }
   var selectedProject by rememberSaveable {mutableStateOf<String?>(null)}
   var black by rememberSaveable {mutableStateOf(false)}
   var focusRequest by remember {mutableIntStateOf(0)}
@@ -160,15 +174,16 @@ class MainActivity:ComponentActivity() {
   }
   LaunchedEffect(state.phase) {
    if(state.phase in listOf(Phase.COMPLETED,Phase.STOPPED,Phase.ERROR) && cameraId.isNotEmpty()) {
-    try {ready=false;s.openCamera(cameraId,s.aperture,settings.tuning);ready=true}catch(e:Exception){error=e.message;ready=false}
+    try {if(!s.previewReady) {ready=false;s.openCamera(cameraId,s.aperture,settings.tuning)};ready=true}catch(e:Exception){error=e.message;ready=false}
    }
   }
   val needsVideo=settings.mode==CaptureMode.TIMELAPSE
-  val valid=when(settings.mode){CaptureMode.PHOTO->true;CaptureMode.TIMER->settings.validTimer;CaptureMode.TIMELAPSE->settings.validInterval}
+  val valid=when(settings.mode){CaptureMode.PHOTO->true;CaptureMode.TIMER->true;CaptureMode.TIMELAPSE->settings.validInterval}
+  val rawReady=!settings.saveRaw || s.camera.supportsRaw(settings.mode==CaptureMode.TIMELAPSE)
   val encodingReady=!needsVideo || codecs?.let {VideoEncodingPolicy.candidates(settings.preference,it).isNotEmpty()}==true
-  val hint=when { !ready->"正在准备相机…";!valid->"请在菜单中完成拍摄设置";needsVideo && codecs==null->"正在检测视频输出能力…";!encodingReady->"当前视频组合不可用，请调整菜单设置";else->null }
+  val hint=when { !ready || formatBusy->"正在准备相机…";!formatReady->"相机格式尚未就绪，请调整 RAW 或切换镜头重试";!valid->"请在菜单中完成拍摄设置";!rawReady->"该镜头不支持当前 RAW 格式，请换镜头或关闭 RAW";needsVideo && codecs==null->"正在检测视频输出能力…";!encodingReady->"当前视频组合不可用，请调整菜单设置";else->null }
   fun startCapture() {
-   if(!ready || switching || tuningBusy || !valid || !encodingReady || pendingStart)return
+   if(!ready || switching || tuningBusy || formatBusy || !formatReady || !valid || !encodingReady || !rawReady || pendingStart)return
    try {
     error=null;authorizationError=null
     if(settings.autoLock && !lockManager.authorized) {pendingStart=true;lockAuthorization.launch(lockManager.authorizationIntent())}
@@ -183,7 +198,7 @@ class MainActivity:ComponentActivity() {
    }
   })
   val currentHardwareFocus by rememberUpdatedState<()->Unit>({
-   if(ready && !switching && !tuningBusy && !s.state.value.busy && route==null && !black)focusRequest++
+   if(ready && !switching && !tuningBusy && !formatBusy && !s.state.value.busy && route==null && !black)focusRequest++
   })
   DisposableEffect(s) {
    hardwareFocus={currentHardwareFocus()}
@@ -203,13 +218,13 @@ class MainActivity:ComponentActivity() {
    selectable.filter {it.rear && main!=null && it.equivalentFocal>main.equivalentFocal*1.1f}.maxByOrNull {it.equivalentFocal}?.let {add(LensShortcut(it.id,"2.1x"))}
    selectable.firstOrNull {!it.rear}?.let {add(LensShortcut(it.id,"前置"))}
   }
-  CameraDashboard(settings,state,s.cameraId,ready&&!tuningBusy&&!switching&&valid&&encodingReady,hint,state.error ?: error ?: authorizationError,
-   tuningCapabilities=tuningCaps,canTune=ready&&!switching&&!tuningBusy&&!state.busy,onTuning=::changeTuning,
-   lenses=lenses,selectedAperture=s.aperture,changeInterval={if(!state.busy)update(settings.copy(interval=it))},canSwitchLens=(ready||error!=null)&&!switching&&!tuningBusy&&!state.busy,onLens={selectLens(it.id,it.aperture)},
-   changeMode={update(settings.copy(mode=it))},onShutter={
+  CameraDashboard(settings,state,s.cameraId,ready&&!tuningBusy&&!switching&&!formatBusy&&formatReady&&valid&&encodingReady&&rawReady,hint,state.error ?: error ?: authorizationError,
+   tuningCapabilities=tuningCaps,canTune=ready&&!switching&&!tuningBusy&&!formatBusy&&!focusBusy&&!state.busy,onTuning=::changeTuning,onColorLook={if(!state.busy)update(settings.copy(colorLook=it))},
+   lenses=lenses,selectedAperture=s.aperture,changeInterval={if(!state.busy)update(settings.copy(interval=it))},canSwitchLens=(ready||error!=null)&&!switching&&!tuningBusy&&!formatBusy&&!focusBusy&&!state.busy,onLens={selectLens(it.id,it.aperture)},
+   changeMode={if(!focusBusy)update(settings.copy(mode=it))},onShutter={
     if(state.busy){if(state.phase==Phase.PAUSED)s.resume() else s.pause()}
     else startCapture()
-   },onStop=s::stop,onMenu={route="menu"},onProject={try {openGallery()}catch(e:Exception){error="无法打开相册：${e.message}"}},onBlackScreen={route=null;black=true}) {modifier->CameraPreviewScreen(s,state,cameraId,modifier,focusRequest)}
+   },onStop=s::stop,onMenu={route="menu"},onProject={try {openGallery()}catch(e:Exception){error="无法打开相册：${e.message}"}},onBlackScreen={route=null;black=true}) {modifier->CameraPreviewScreen(s,state,cameraId,modifier,focusRequest,settings.colorLook)}
   if(black && state.busy)BlackCaptureScreen(this) {black=false}
   route?.let {page->
    val title=when(page){"capture"->"拍摄设置";"video"->"视频输出";"device"->"镜头与设备能力";"files"->"项目列表";"results"->"拍摄结果";"help"->"使用说明";else->"菜单"}
@@ -227,7 +242,7 @@ class MainActivity:ComponentActivity() {
        if(state.busy && page in listOf("capture","video","device"))Text("拍摄或合成期间设置暂时锁定。",color=MaterialTheme.colorScheme.primary)
        when(page) {
         "menu"->{
-         MenuEntry("拍摄设置","间隔、结束方式、倒计时与参数锁定") {route="capture"}
+         MenuEntry("拍摄设置","间隔、结束方式与参数锁定") {route="capture"}
          MenuEntry("视频输出","分辨率、帧率、编码与原片清理") {route="video"}
          MenuEntry("镜头与设备能力","切换镜头、查看相机能力") {route="device"}
          MenuEntry("项目列表","查看原始项目与导出") {route="files"}

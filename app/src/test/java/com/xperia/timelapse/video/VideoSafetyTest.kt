@@ -38,6 +38,7 @@ class VideoSafetyTest {
   val video=temporary.newFile("preview.mp4").apply {writeText("video")}
   assertThrows(IllegalArgumentException::class.java) {VerifiedPhotoCleanup.delete(listOf(outside),video,true)};assertTrue(outside.exists())
  }
+ @Test fun rawFilesCannotBeDeletedEvenAfterVideoVerification() {val raw=temporary.newFile("frame_000001.dng").apply {writeText("raw")};val video=temporary.newFile("preview.mp4").apply {writeText("video")};assertThrows(IllegalArgumentException::class.java) {VerifiedPhotoCleanup.delete(listOf(raw),video,true)};assertTrue(raw.exists())}
  @Test fun verifiedCleanupKeepsVideoAndMetadata() {
   val photo=temporary.newFile("frame_000001.jpg");val video=temporary.newFile("preview.mp4").apply {writeText("video")};val metadata=temporary.newFile("metadata.json")
   assertEquals(1,VerifiedPhotoCleanup.delete(listOf(photo),video,true));assertFalse(photo.exists());assertTrue(video.exists());assertTrue(metadata.exists())

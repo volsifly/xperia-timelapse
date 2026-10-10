@@ -1,0 +1,30 @@
+Third-party Fujifilm-style LUTs
+
+A / abpy: https://github.com/abpy/FujifilmCameraProfiles
+Pinned commit: b5a1f16abfb2759b337c83d69d9dc49470e7e518
+Author: abpy. Derived from Adobe Fujifilm camera-matching profiles.
+Upstream profiles/LUTs are CC BY-NC-SA 4.0:
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+Our resampled abpy_*.lut files are distributed under the same license.
+Changes: resampled to 33-grid, clipped to [0,1], quantized to 8-bit sRGB;
+converted to packed binary format. Attribution and non-commercial/share-alike
+conditions apply to the LUT resources, not to photographs made with them.
+
+P / pyrocat101: https://github.com/pyrocat101/Fujifilm-LUTs
+Pinned commit: c687686384bbe6983c7d20d5ade21068d08dfbf8
+Author: pyrocat101. Upstream describes its LUTs as transformations of Fujifilm's
+GFX ETERNA 55 V1.00 F-Log2C / F-Gamut C film simulation LUTs.
+The upstream repository does not declare an explicit redistribution license.
+These resources are not represented as MIT, Apache, or public-domain software.
+Preserve upstream attribution and obtain the relevant permissions before
+commercial distribution. Fujifilm source terms are not replaced by this notice.
+Changes: sRGB decode -> linear sRGB D65 -> Bradford D60 -> ACES AP0 LUT lookup
+-> assumed BT.709 gamma 2.2 decode -> sRGB encode; baked into a 33-grid table,
+clipped to [0,1], quantized to 8-bit, converted to packed binary format.
+
+Fujifilm and film simulation names are trademarks of their respective owners.
+This app is not affiliated with, endorsed by, or sponsored by Fujifilm or Adobe.
+Sony JPEG is already processed by the camera ISP. Its tone curve cannot be
+recovered exactly; these JPEG adaptations are approximate creative looks.
+RAW/DNG data is never transformed by these LUTs.
+Full file provenance and SHA-256 hashes are recorded in manifest.json.
