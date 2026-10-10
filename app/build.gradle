@@ -2,7 +2,7 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
  namespace 'com.xperia.timelapse'
  compileSdk 35
- defaultConfig { applicationId 'com.xperia.timelapse'; minSdk 29; targetSdk 34; versionCode 24; versionName '0.5.19' }
+ defaultConfig { applicationId 'com.xperia.timelapse'; minSdk 29; targetSdk 34; versionCode 25; versionName '0.5.20' }
  buildFeatures { compose true }
  composeOptions { kotlinCompilerExtensionVersion '1.5.10' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

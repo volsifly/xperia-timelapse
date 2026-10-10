@@ -12,36 +12,16 @@ enum class ColorStyle(val label:String,val detail:String,val contrast:Float=0f,v
  VIVID("鲜艳反转片","自研 · 鲜艳色彩、较强反差",.26f,1.28f,0f,1f,.008f,.006f),
  CINEMA("影院柔色","自研 · 柔和反差、低饱和",-.22f,.72f,.045f,.93f,.012f,.015f),
  MONO("细腻黑白","自研 · 黑白层次",.2f,0f,.012f,.985f),
- ABPY_ASTIA("A · ASTIA","abpy · 富士相机匹配 LUT",lutId="abpy_astia",source="abpy"),
- ABPY_BLEACH_BYPASS("A · Bleach Bypass","abpy · 富士相机匹配 LUT",lutId="abpy_bleach_bypass",source="abpy"),
- ABPY_CLASSIC_CHROME("A · Classic Chrome","abpy · 富士相机匹配 LUT",lutId="abpy_classic_chrome",source="abpy"),
- ABPY_CLASSIC_NEG("A · Classic Neg","abpy · 富士相机匹配 LUT",lutId="abpy_classic_neg",source="abpy"),
- ABPY_ETERNA("A · ETERNA","abpy · 富士相机匹配 LUT",lutId="abpy_eterna",source="abpy"),
- ABPY_NOSTALGIC_NEG("A · Nostalgic Neg","abpy · 富士相机匹配 LUT",lutId="abpy_nostalgic_neg",source="abpy"),
- ABPY_PRO_NEG_HI("A · PRO Neg Hi","abpy · 富士相机匹配 LUT",lutId="abpy_pro_neg_hi",source="abpy"),
- ABPY_PRO_NEG_STD("A · PRO Neg Std","abpy · 富士相机匹配 LUT",lutId="abpy_pro_neg_std",source="abpy"),
- ABPY_PROVIA("A · PROVIA","abpy · 富士相机匹配 LUT",lutId="abpy_provia",source="abpy"),
- ABPY_REALA_ACE("A · REALA ACE","abpy · 富士相机匹配 LUT",lutId="abpy_reala_ace",source="abpy"),
- ABPY_VELVIA("A · Velvia","abpy · 富士相机匹配 LUT",lutId="abpy_velvia",source="abpy"),
- PYRO_ACROS("P · ACROS","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_acros",source="pyrocat101"),
- PYRO_ASTIA("P · ASTIA","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_astia",source="pyrocat101"),
- PYRO_CLASSIC_CHROME("P · Classic Chrome","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_classic_chrome",source="pyrocat101"),
- PYRO_CLASSIC_NEG("P · Classic Neg","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_classic_neg",source="pyrocat101"),
- PYRO_ETERNA_BB("P · ETERNA BB","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_eterna_bb",source="pyrocat101"),
- PYRO_ETERNA("P · ETERNA","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_eterna",source="pyrocat101"),
- PYRO_PRO_NEGSTD("P · PRO Neg Std","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_pro_negstd",source="pyrocat101"),
- PYRO_PROVIA("P · PROVIA","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_provia",source="pyrocat101"),
- PYRO_REALA_ACE("P · REALA ACE","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_reala_ace",source="pyrocat101"),
- PYRO_VELVIA("P · Velvia","pyrocat101 · F-Log2C 衍生 LUT",lutId="pyro_velvia",source="pyrocat101")
 }
-data class ColorLook(val style:ColorStyle=ColorStyle.NATURAL,val strength:Float=1f) {
+data class ColorLook(val style:ColorStyle=ColorStyle.NATURAL,val strength:Float=1f,val importedLutId:String?=null,val importedLutName:String?=null) {
  init {require(strength.isFinite() && strength in 0f..1f)}
- val active get()=style!=ColorStyle.NATURAL && strength>0f
+ val active get()=(importedLutId!=null || style!=ColorStyle.NATURAL) && strength>0f
+ val label get()=importedLutName ?: style.label
 }
 
 /** Legacy recipes plus source-labelled imported LUTs; RAW is never modified. */
 class ColorTransform(val look:ColorLook) {
- private val lut=if(look.active)look.style.lutId?.let {LutRepository.get(it)} else null
+ private val lut=if(look.active)(look.importedLutId ?: look.style.lutId)?.let {LutRepository.get(it)} else null
  private val curve=FloatArray(256) {curve(it/255f,look.style)}
  fun pixel(argb:Int):Int {
   if(!look.active)return argb

@@ -31,8 +31,9 @@ object ColorLookRenderer {
    if(!look.active) {view.setRenderEffect(null);applied[view]=key;return}
    val shader=RuntimeShader(SHADER)
    val s=look.style
-   val lut=s.lutId?.let {LutRepository.get(it)}
-   val atlas=if(lut==null)emptyAtlas else atlases.getOrPut(s.lutId!!) {
+   val lutId=look.importedLutId ?: s.lutId
+   val lut=lutId?.let {LutRepository.get(it)}
+   val atlas=if(lut==null)emptyAtlas else atlases.getOrPut(lutId!!) {
     val pixels=IntArray(lut.size*lut.size*lut.size) {i->
      -0x1000000 or ((lut.data[i*3].toInt() and 255) shl 16) or ((lut.data[i*3+1].toInt() and 255) shl 8) or (lut.data[i*3+2].toInt() and 255)
     }

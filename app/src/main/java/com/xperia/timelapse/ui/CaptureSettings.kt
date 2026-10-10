@@ -27,16 +27,23 @@ data class CaptureSettings(
 }
 class CapturePreferences(context:Context) {
  private val preferences=context.getSharedPreferences("capture-settings",Context.MODE_PRIVATE)
+ private val importedLuts=com.xperia.timelapse.color.ImportedLutRepository(context)
  fun load():CaptureSettings {
   fun <T:Enum<T>> choice(key:String,values:Array<T>,default:T)=values.firstOrNull {it.name==preferences.getString(key,default.name)} ?: default
-  return CaptureSettings(saveRaw=preferences.getBoolean("save-raw",false),colorLook=com.xperia.timelapse.color.ColorLook(choice("color-style",com.xperia.timelapse.color.ColorStyle.values(),com.xperia.timelapse.color.ColorStyle.NATURAL),preferences.getFloat("color-strength",1f).takeIf {it.isFinite() && it in 0f..1f} ?: 1f),whiteBalanceMode=choice("wb-mode",WhiteBalanceMode.values(),WhiteBalanceMode.AUTO),exposureEv=preferences.getFloat("exposure-ev",0f).takeIf {it.isFinite()} ?: 0f,autoLock=preferences.getBoolean("lock-after-30s",true),autoBlack=preferences.getBoolean("black-after-5s",true),indicator=preferences.getBoolean("indicator",true),mode=choice("mode",CaptureMode.values(),CaptureMode.TIMELAPSE),interval=preferences.getString("interval","2")!!,limit=preferences.getString("limit","100")!!,
+  val importedId=preferences.getString("color-lut-id",null)?.takeIf {id->importedLuts.list().any {it.id==id}}
+  val importedName=importedId?.let {preferences.getString("color-lut-name",null)}
+  val colorLook=com.xperia.timelapse.color.ColorLook(
+   style=if(importedId!=null)com.xperia.timelapse.color.ColorStyle.NATURAL else choice("color-style",com.xperia.timelapse.color.ColorStyle.values(),com.xperia.timelapse.color.ColorStyle.NATURAL),
+   strength=preferences.getFloat("color-strength",1f).takeIf {it.isFinite() && it in 0f..1f} ?: 1f,
+   importedLutId=importedId,importedLutName=importedName)
+  return CaptureSettings(saveRaw=preferences.getBoolean("save-raw",false),colorLook=colorLook,whiteBalanceMode=choice("wb-mode",WhiteBalanceMode.values(),WhiteBalanceMode.AUTO),exposureEv=preferences.getFloat("exposure-ev",0f).takeIf {it.isFinite()} ?: 0f,autoLock=preferences.getBoolean("lock-after-30s",true),autoBlack=preferences.getBoolean("black-after-5s",true),indicator=preferences.getBoolean("indicator",true),mode=choice("mode",CaptureMode.values(),CaptureMode.TIMELAPSE),interval=preferences.getString("interval","2")!!,limit=preferences.getString("limit","100")!!,
    duration=preferences.getBoolean("duration",false),timerSeconds=preferences.getString("timer","5")!!,
    exposure=preferences.getBoolean("ae",true),focus=preferences.getBoolean("af",true),whiteBalance=preferences.getBoolean("awb",true),
    deletePhotos=preferences.getBoolean("delete",true),
    preference=choice("codec",VideoPreference.values(),VideoPreference.AUTO),quality=choice("quality",VideoQuality.values(),VideoQuality.STANDARD),
    resolution=choice("resolution",VideoResolution.values(),VideoResolution.FULL_HD),fps=preferences.getInt("fps",30).takeIf {it in VideoOutput.SUPPORTED_FPS} ?: 30)
  }
- fun save(s:CaptureSettings) {preferences.edit().putBoolean("save-raw",s.saveRaw).putString("color-style",s.colorLook.style.name).putFloat("color-strength",s.colorLook.strength).putString("wb-mode",s.whiteBalanceMode.name).putFloat("exposure-ev",s.exposureEv).putBoolean("lock-after-30s",s.autoLock).putBoolean("black-after-5s",s.autoBlack).putBoolean("indicator",s.indicator).putString("mode",s.mode.name).putString("interval",s.interval).putString("limit",s.limit).putBoolean("duration",s.duration).putString("timer",s.timerSeconds)
+ fun save(s:CaptureSettings) {preferences.edit().putBoolean("save-raw",s.saveRaw).putString("color-style",s.colorLook.style.name).putString("color-lut-id",s.colorLook.importedLutId).putString("color-lut-name",s.colorLook.importedLutName).putFloat("color-strength",s.colorLook.strength).putString("wb-mode",s.whiteBalanceMode.name).putFloat("exposure-ev",s.exposureEv).putBoolean("lock-after-30s",s.autoLock).putBoolean("black-after-5s",s.autoBlack).putBoolean("indicator",s.indicator).putString("mode",s.mode.name).putString("interval",s.interval).putString("limit",s.limit).putBoolean("duration",s.duration).putString("timer",s.timerSeconds)
   .putBoolean("ae",s.exposure).putBoolean("af",s.focus).putBoolean("awb",s.whiteBalance).putBoolean("delete",s.deletePhotos)
   .putString("codec",s.preference.name).putString("quality",s.quality.name).putString("resolution",s.resolution.name).putInt("fps",s.fps).apply()}
 }

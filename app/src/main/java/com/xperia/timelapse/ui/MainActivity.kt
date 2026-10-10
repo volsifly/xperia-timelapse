@@ -116,6 +116,33 @@ class MainActivity:ComponentActivity() {
    lifecycle.addObserver(observer);onDispose {lifecycle.removeObserver(observer)}
   }
   var error by remember {mutableStateOf<String?>(null)}
+  val importedLutRepository=remember {com.xperia.timelapse.color.ImportedLutRepository(this@MainActivity)}
+  var importedLuts by remember {mutableStateOf(importedLutRepository.list())}
+  val lutPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->
+   if(uri!=null)scope.launch {
+    try {
+     val name=contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use {cursor->if(cursor.moveToFirst())cursor.getString(0) else null} ?: "Imported.cube"
+     val bytes=withContext(Dispatchers.IO) {contentResolver.openInputStream(uri)?.use {stream->
+      val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);var total=0
+      while(true) {val read=stream.read(buffer);if(read<0)break;total+=read;require(total<=8*1024*1024) {".cube 文件超过 8 MB"};output.write(buffer,0,read)}
+      output.toByteArray()
+     } ?: throw IllegalStateException("无法读取所选文件")}
+     val imported=withContext(Dispatchers.IO) {importedLutRepository.importCube(name,bytes)}
+     importedLuts=importedLutRepository.list()
+     update(settings.copy(colorLook=com.xperia.timelapse.color.ColorLook(importedLutId=imported.id,importedLutName=imported.name)))
+     error=null
+    }catch(e:Exception) {error=e.message ?: "无法导入 LUT 文件"}
+   }
+  }
+  fun deleteImportedLut(id:String) {
+   scope.launch {
+    try {
+     if(settings.colorLook.importedLutId==id)update(settings.copy(colorLook=com.xperia.timelapse.color.ColorLook()))
+     withContext(Dispatchers.IO) {importedLutRepository.delete(id)}
+     importedLuts=importedLutRepository.list();error=null
+    }catch(e:Exception) {error=e.message ?: "无法删除 LUT"}
+   }
+  }
   var route by rememberSaveable {mutableStateOf<String?>(null)}
   val repository=remember {CameraCapabilityRepository(this)}
   var cameras by remember {mutableStateOf(emptyList<CameraCapabilities>())}
@@ -219,7 +246,7 @@ class MainActivity:ComponentActivity() {
    selectable.firstOrNull {!it.rear}?.let {add(LensShortcut(it.id,"前置"))}
   }
   CameraDashboard(settings,state,s.cameraId,ready&&!tuningBusy&&!switching&&!formatBusy&&formatReady&&valid&&encodingReady&&rawReady,hint,state.error ?: error ?: authorizationError,
-   tuningCapabilities=tuningCaps,canTune=ready&&!switching&&!tuningBusy&&!formatBusy&&!focusBusy&&!state.busy,onTuning=::changeTuning,onColorLook={if(!state.busy)update(settings.copy(colorLook=it))},
+   tuningCapabilities=tuningCaps,canTune=ready&&!switching&&!tuningBusy&&!formatBusy&&!focusBusy&&!state.busy,onTuning=::changeTuning,onColorLook={if(!state.busy)update(settings.copy(colorLook=it))},importedLuts=importedLuts,onImportLut={if(!state.busy)lutPicker.launch(arrayOf("*/*"))},onDeleteLut=::deleteImportedLut,
    lenses=lenses,selectedAperture=s.aperture,changeInterval={if(!state.busy)update(settings.copy(interval=it))},canSwitchLens=(ready||error!=null)&&!switching&&!tuningBusy&&!formatBusy&&!focusBusy&&!state.busy,onLens={selectLens(it.id,it.aperture)},
    changeMode={if(!focusBusy)update(settings.copy(mode=it))},onShutter={
     if(state.busy){if(state.phase==Phase.PAUSED)s.resume() else s.pause()}

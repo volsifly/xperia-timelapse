@@ -7,6 +7,7 @@ import kotlin.math.roundToInt
 /** Packed sRGB cube: red varies fastest. Shared by saved images and preview atlas. */
 class Lut3D(val size:Int,val data:ByteArray) {
  init {require(size in 2..65 && data.size==size*size*size*3)}
+ fun encode():ByteArray=ByteBuffer.allocate(4+data.size).order(ByteOrder.LITTLE_ENDIAN).putInt(size).put(data).array()
  private val lower=IntArray(256) {(it*(size-1)/255f).toInt()}
  private val fraction=FloatArray(256) {it*(size-1)/255f-lower[it]}
  private val delta=IntArray(256) {if(lower[it]<size-1)1 else 0}
@@ -43,8 +44,12 @@ class Lut3D(val size:Int,val data:ByteArray) {
 
 object LutRepository {
  @Volatile var readAsset:((String)->ByteArray)?=null
+ @Volatile var readImported:((String)->ByteArray)?=null
  private val cached=mutableMapOf<String,Lut3D>()
  @Synchronized fun get(id:String):Lut3D=cached.getOrPut(id) {
-  Lut3D.decode(requireNotNull(readAsset){"LUT 资源尚未初始化"}("luts/$id.lut"))
+  val bytes=if(id.startsWith("custom-")) requireNotNull(readImported){"导入的 LUT 尚未初始化"}(id)
+   else requireNotNull(readAsset){"LUT 资源尚未初始化"}("luts/$id.lut")
+  Lut3D.decode(bytes)
  }
+ @Synchronized fun forget(id:String) {cached.remove(id)}
 }

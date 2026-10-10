@@ -30,7 +30,7 @@ import com.xperia.timelapse.util.TimeFormatter
 data class LensShortcut(val id:String,val label:String,val aperture:Float?=null)
 private val Amber=Color(0xFFFFC14D)
 @Composable fun CameraDashboard(settings:CaptureSettings,state:TimelapseState,cameraId:String,canStart:Boolean,startHint:String?,error:String?,
- tuningCapabilities:CameraTuningCapabilities,canTune:Boolean,onColorLook:(com.xperia.timelapse.color.ColorLook)->Unit,onTuning:(CameraTuning)->Unit,
+ tuningCapabilities:CameraTuningCapabilities,canTune:Boolean,onColorLook:(com.xperia.timelapse.color.ColorLook)->Unit,importedLuts:List<com.xperia.timelapse.color.ImportedLut>,onImportLut:()->Unit,onDeleteLut:(String)->Unit,onTuning:(CameraTuning)->Unit,
  lenses:List<LensShortcut>,selectedAperture:Float?,changeInterval:(String)->Unit,canSwitchLens:Boolean,onLens:(LensShortcut)->Unit,
  changeMode:(CaptureMode)->Unit,onShutter:()->Unit,onStop:()->Unit,onMenu:()->Unit,onProject:()->Unit,onBlackScreen:()->Unit,preview:@Composable (Modifier)->Unit) {
  BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
@@ -56,7 +56,7 @@ private val Amber=Color(0xFFFFC14D)
   }
   Column(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+62.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
    CameraTuningControls(settings.tuning,tuningCapabilities,canTune,onTuning)
-   ColorLookControls(settings.colorLook,canTune,onColorLook)
+   ColorLookControls(settings.colorLook,canTune,importedLuts,onImportLut,onDeleteLut,onColorLook)
   }
   Row(Modifier.align(Alignment.BottomStart).padding(start=16.dp,end=rail+16.dp,bottom=dock+12.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
    lenses.forEach {lens->FilterChip(selected=lens.id==cameraId && lens.aperture==selectedAperture,onClick={onLens(lens)},enabled=canSwitchLens,

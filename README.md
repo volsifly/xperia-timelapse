@@ -2,7 +2,7 @@
 
 面向 **Sony Xperia PRO-I** 的 Android 延时摄影应用。支持两段式实体拍摄键、镜头快捷切换、白平衡与 EV 调节、自动黑屏和锁屏后持续拍摄。延时任务停止或完成后，自动合成视频、校验并保存到相册；默认在保存成功后清理本任务原片。
 
-当前版本：**0.5.19**（versionCode 24）。使用 Kotlin、Jetpack Compose、CameraX、Camera2Interop 和 Android 原生视频编码。最低 Android 10；主要真机验证设备为 Sony PRO-I XQ-BE72 / Android 13，其他设备的镜头、实体按键、编码器和后台行为以实际支持为准。
+当前版本：**0.5.20**（versionCode 25）。使用 Kotlin、Jetpack Compose、CameraX、Camera2Interop 和 Android 原生视频编码。最低 Android 10；主要真机验证设备为 Sony PRO-I XQ-BE72 / Android 13，其他设备的镜头、实体按键、编码器和后台行为以实际支持为准。
 
 ## 目录
 
@@ -246,7 +246,7 @@ PRO-I / Android 13 在真正熄屏后才可能显示该通知灯。系统实际�
 
 取景界面点击“色彩”选择自然、软件 Log、经典负片、经典正片、鲜艳反转片、影院柔色、细腻黑白，并调节 0～100% 强度。选择跨重启保存，拍摄期间禁止更改。同一效果先写入 JPEG，合成时不重复调色。
 
-软件 Log 是对相机 JPEG / 预览 sRGB 输出施加的自定义平坦曲线，**不是 Sony S-Log、F-Log 或原生 10-bit Log**，不能恢复相机输出中已裁掉的高光。原有胶片预设仍为自研色彩配方。0.5.14 额外加入以下两个第三方项目的实际 3D LUT，均不代表索尼手机获得了富士相机的原生色彩处理。
+软件 Log 是对相机 JPEG / 预览 sRGB 输出施加的自定义平坦曲线，**不是 Sony S-Log、F-Log 或原生 10-bit Log**，不能恢复相机输出中已裁掉的高光。内置胶片预设为项目自研色彩配方；也可从风格面板导入自己的纯 3D `.cube` 文件。
 
 
 ### 点按对焦与区域测光、快门流程（0.5.19）
@@ -287,20 +287,13 @@ RAW / JPEG 格式和单张拍摄策略在取景阶段准备完成，快门按钮
 
 这些改动通过软件构建与测试，但当前未连接手机，不能据此确认 Sony 真机的快门延迟已经消失。ZSL 是否实际启用、RAW 的传感器耗时、LUT 成片处理时间需要设备日志验证。
 
-### 两套 GitHub LUT（21 个）
+### 导入 3D LUT（0.5.20）
 
-菜单按“自研 / abpy / pyrocat101”分组，A / P 前缀区分同名风格。选择及强度跨重启保存。
+在取景界面点“色彩”，选择“导入 .cube 文件”从系统文件选择器添加 LUT。支持 Adobe Cube LUT 格式中的纯 3D LUT，`LUT_3D_SIZE` 为 2 至 65，可带 `TITLE` 和成对的 `DOMAIN_MIN` / `DOMAIN_MAX`；也接受 DaVinci Resolve 常用的 `LUT_3D_INPUT_RANGE`。不支持 1D LUT 或 1D+3D 混合文件；导入时会验证数据行数量、数值和输入范围，无效文件会显示错误。
 
-- **A · abpy**：11 个，包括 PROVIA、Velvia、ASTIA、Classic Chrome、Classic Neg、PRO Neg Hi / Std、ETERNA、REALA ACE、Nostalgic Neg、Bleach Bypass。来源 [abpy/FujifilmCameraProfiles](https://github.com/abpy/FujifilmCameraProfiles)，基于 Adobe 富士相机匹配配置。
-- **P · pyrocat101**：10 个，包括 PROVIA、Velvia、ASTIA、Classic Chrome、Classic Neg、PRO Neg Std、ETERNA、ETERNA BB、REALA ACE、ACROS。来源 [pyrocat101/Fujifilm-LUTs](https://github.com/pyrocat101/Fujifilm-LUTs)，作者说明由富士 GFX ETERNA 55 的 F-Log2C LUT 转换生成。
+导入的 LUT 转换为应用内部 8-bit sRGB 立方表，存入应用私有空间；选择和强度跨重启保存，可在风格菜单中删除。效果用于预览、处理后的 JPEG 和延时视频，不更改 DNG RAW。应用源码和安装包不附带第三方 LUT 内容；LUT 的创作与许可由导入者负责。
 
-**输入适配的限制**：abpy 的 sRGB LUT 预期图像具有线性对比度；相机 JPEG 已包含索尼 ISP 的色调曲线，本应用使用其 sRGB 像素作为近似输入，无法精确撤销这条未知曲线。pyrocat101 使用 AP0 版本，先解码 sRGB、经 Bradford 将 D65 转换为 D60 并转换到 ACES AP0，再查 LUT；输出按上游约定的 BT.709 / gamma 2.2 解码并编码回 sRGB。转换了色域和传递函数，但同样不能从 JPEG 恢复真实场景线性光，可能出现额外反差。软件 Log 预设不作为这些 LUT 的输入，不冒充 F-Log2C。
-
-打包资源统一为 33³、8-bit sRGB 表；保存和 Android 13 预览均使用八顶点三线性插值，强度对原始 sRGB 输出混合。预览通过 GPU 的二维 LUT 图集处理，JPEG 通过 CPU 处理；视频直接采用已处理的 JPEG，DNG 保持原始数据。预览和照片受相机流差异影响，实际 Sony GPU 效果仍需真机验证。
-
-**来源与授权**：`app/src/main/assets/luts/manifest.json` 记录固定提交、原文件路径及原始/打包 SHA-256；`NOTICE.txt` 保留署名和变换说明。abpy 派生资源采用 CC BY-NC-SA 4.0（署名、非商业、相同许可），不扩展到用户拍摄的照片。pyrocat101 仓库未声明明确的再分发许可，不能将其资源视作 MIT / Apache 或公有领域；商业再分发前需核对源 LUT 条款及作者授权。
-
-可用 `python3 scripts/import_fuji_luts.py` 重建资源，要求 numpy、已认证的 GitHub CLI 和网络。脚本固定上游提交，不会随着 main/master 改变输入。
+保存 JPEG 使用 CPU 三线性插值，Android 13 及以上预览使用 GPU 图集；视频采用已经处理的 JPEG。应用按 `.cube` 输入范围处理 0–1 RGB，不会自动识别或转换 LUT 对应的 Log 曲线、色域及传递函数。预览和成片也会受相机处理差异影响。
 
 Android 13 及以上通过 AGSL 显示实时预览；更低版本只在保存的 JPEG 和视频中应用效果。预览使用相机预览流，与 JPEG 的曝光和色彩处理可能存在细微差异。预览 shader 失败会提示，最终照片仍通过独立色彩处理保存。
 
@@ -495,12 +488,13 @@ Activity 提供预览 Surface、设置和交互；CameraX 相机绑定到 `Lifec
 
 | 版本 | 主要变化 |
 | --- | --- |
+| 0.5.20 | 移除第三方 LUT 及相关资源，新增纯 3D .cube 导入、持久化、选择和删除 |
 | 0.5.19 | 点按 / 半按对焦同时按该位置测光并恢复光圈；移除测光按钮，单张参数写盘后移、提示先于日志、优化 LUT 插值 |
 | 0.5.18 | 修正可变光圈请求被 AE 覆盖的问题，测光后固定曝光、EV 补偿、实际光圈确认和成片 F 值记录 |
 | 0.5.17 | 单张 / 定时完成后保留取景会话，避免重复重启和对焦；同镜头重开沿用当前 RAW / JPEG / ZSL 策略 |
 | 0.5.16 | 取景阶段准备 RAW / 单张策略，支持设备的 JPEG 启用 ZSL，记录拍摄与保存分阶段耗时 |
 | 0.5.15 | 单张和定时立即触发，忽略旧倒计时，跳过单张快门流程中重复提交相机参数的等待 |
-| 0.5.14 | 加入 abpy 与 pyrocat101 两套共 21 个 LUT、来源分组、共用 CPU / GPU 插值和输入适配 |
+| 0.5.14 | 加入第三方 LUT 风格 |
 | 0.5.13 | 白平衡 / EV 和色彩分行，单次拍摄不等延时间隔，定时从快门开始计时 |
 | 0.5.12 | RAW / DNG 原片保存、软件 Log、富士风格模拟、Android 13 色彩预览 |
 | 0.5.11 | 拍摄图像长边设置，视频尺寸与照片方向一致 |
