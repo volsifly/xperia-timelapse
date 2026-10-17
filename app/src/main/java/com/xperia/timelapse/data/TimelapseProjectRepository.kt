@@ -98,6 +98,31 @@ class TimelapseProjectRepository(context: Context) {
    runCatching {write();awaitMetadata()};throw e
   }
  }
+ suspend fun regenerateVideo(folder:File,cancelled:()->Boolean,progress:(String)->Unit):TimelapseState = withContext(Dispatchers.IO) {
+  check(folder.isDirectory && File(folder,"metadata.json").isFile) {"项目文件不存在或元数据缺失"}
+  directory=folder
+  metadata=JSONObject(File(folder,"metadata.json").readText())
+  val frames=(folder.listFiles()?.mapNotNull {file->
+   Regex("frame_(\\d{6})\\.jpg").matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull()?.let {it to file}
+  }?.toMap().orEmpty())
+  var captured=0
+  while(frames[captured+1]?.let {it.isFile && it.length()>0}==true)captured++
+  check(captured>=2) {"至少需要两张已保存的照片才能生成视频"}
+  check(!File(folder,"preview.mp4").exists()) {"项目视频已存在，请先从项目详情查看或分享"}
+  File(folder,"preview.partial.mp4").delete()
+  val requestedLongEdge=metadata.optInt("requested_capture_long_edge",1920)
+  val resolution=when {requestedLongEdge>=3000->VideoResolution.UHD;requestedLongEdge<=1280->VideoResolution.HD;else->VideoResolution.FULL_HD}
+  val preference=runCatching {VideoPreference.valueOf(metadata.optString("video_preference","AUTO"))}.getOrDefault(VideoPreference.AUTO)
+  val quality=runCatching {VideoQuality.valueOf(metadata.optString("video_quality","STANDARD"))}.getOrDefault(VideoQuality.STANDARD)
+  val fps=metadata.optInt("requested_video_fps",30).takeIf {it in VideoOutput.SUPPORTED_FPS} ?: 30
+  config=TimelapseConfig(saveRaw=false,intervalMs=metadata.optLong("interval_ms",2000).coerceIn(1000,3600000),totalFrames=captured,
+   autoComposeVideo=true,deleteOriginalPhotos=metadata.optBoolean("delete_original_photos",false),videoPreference=preference,videoQuality=quality,videoResolution=resolution,videoFrameRate=fps)
+  metadata.put("frame_count",captured).put("status","stopped").put("video_status","encoding").put("regeneration",true)
+  write();awaitMetadata()
+  val state=TimelapseState(phase=Phase.STOPPED,capturedFrames=captured,projectPath=folder.absolutePath)
+  composeVideo(state,cancelled,progress)
+  state
+ }
  suspend fun finish(state: TimelapseState) = withContext(Dispatchers.IO) {
   synchronized(metadataGuard) {
    metadata.put("status",state.phase.name.lowercase()).put("frame_count",state.capturedFrames)

@@ -278,7 +278,14 @@ class MainActivity:ComponentActivity() {
         }
         "capture","video"->TimelapseSettingsScreen(settings,!state.busy,::update,page,codecs,lockAuthorized) {pendingStart=false;lockAuthorization.launch(lockManager.authorizationIntent())}
         "device"->CapabilityScreen(cameras,::selectCamera,!state.busy&&!switching)
-        "files"->ProjectFilesScreen(com.xperia.timelapse.util.StorageHelper.root(this@MainActivity),state.projectPath) {selectedProject=it.absolutePath;route="results"}
+        "files"->ProjectFilesScreen(
+         root=com.xperia.timelapse.util.StorageHelper.root(this@MainActivity),currentPath=state.projectPath,
+         refreshKey="${state.projectPath}:${state.phase}",busy=state.busy,regeneratingPath=state.projectPath.takeIf {state.phase==Phase.PROCESSING},
+         open={selectedProject=it.absolutePath;route="results"},
+         regenerate={folder->runCatching {
+          startService(Intent(this@MainActivity,TimelapseForegroundService::class.java).setAction("REGENERATE_PROJECT").putExtra("project_path",folder.absolutePath))
+         }.onFailure {error="启动视频生成失败：${it.message}"}}
+        )
         "results"->{
          val path=selectedProject ?: state.projectPath
          val current=path==state.projectPath

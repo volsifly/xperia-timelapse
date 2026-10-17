@@ -35,6 +35,7 @@ class TimelapseForegroundService: LifecycleService() {
  private var lastNotification=0L
  private var foreground=false
  private var autoVideo=false
+ private var regenerating=false
  private var savedVideo=false
  private lateinit var indicator:CaptureIndicator
  private var indicatorEnabled=true
@@ -112,8 +113,38 @@ class TimelapseForegroundService: LifecycleService() {
  override fun onBind(intent:Intent): IBinder { super.onBind(intent);return binder }
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
   super.onStartCommand(intent,flags,startId)
-  if(intent?.action=="STOP") stop()
+  when(intent?.action) {
+   "STOP"->stop()
+   "REGENERATE_PROJECT"->intent.getStringExtra("project_path")?.let(::regenerateProject)
+  }
   return START_NOT_STICKY
+ }
+ private fun regenerateProject(path:String) {
+  if(regenerating || state.value.busy)return
+  regenerating=true;cancelComposition.set(false);autoVideo=true;savedVideo=false
+  val frameCount=runCatching {org.json.JSONObject(java.io.File(path,"metadata.json").readText()).optInt("frame_count")}.getOrDefault(0)
+  val initial=TimelapseState(phase=Phase.PROCESSING,capturedFrames=frameCount,processingMessage="准备重新生成视频",projectPath=path)
+  uiState.value=initial
+  ServiceCompat.startForeground(this,10,notification(initial),ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+  foreground=true
+  scope.launch {
+   try {
+    val result=projects.regenerateVideo(java.io.File(path),{cancelComposition.get()}) {message->
+     val processing=uiState.value.copy(phase=Phase.PROCESSING,processingMessage=message)
+     uiState.value=processing;notifyState(processing)
+    }
+    savedVideo=true
+    val completed=result.copy(processingMessage="视频已重新生成并保存到相册")
+    uiState.value=completed;notifyState(completed)
+   } catch(e:Exception) {
+    val failed=uiState.value.copy(phase=Phase.ERROR,error=e.message ?: "视频生成失败",processingMessage=null)
+    uiState.value=failed;notifyState(failed)
+   } finally {
+    regenerating=false;autoVideo=false
+    if(foreground)stopForeground(STOP_FOREGROUND_REMOVE)
+    foreground=false;stopSelf()
+   }
+  }
  }
  suspend fun openCamera(id:String,selectedAperture:Float?=null,tuning:CameraTuning=camera.tuning) {
   if(state.value.busy || starting) return

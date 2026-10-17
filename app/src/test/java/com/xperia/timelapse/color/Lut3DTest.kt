@@ -2,7 +2,6 @@ package com.xperia.timelapse.color
 
 import org.junit.Assert.*
 import org.junit.Test
-import java.io.File
 
 class Lut3DTest {
  private fun identity():Lut3D {
@@ -44,13 +43,7 @@ class Lut3DTest {
    assertEquals(p ushr 24,result ushr 24)
   }
  }
- @Test fun allImportedStylesHaveValidDistinctAssets() {
-  val styles=ColorStyle.values().filter {it.lutId!=null};assertEquals(21,styles.size)
-  assertEquals(21,styles.map {it.lutId}.toSet().size)
-  for(s in styles) {
-   val lut=Lut3D.decode(File("src/main/assets/luts/${s.lutId}.lut").readBytes());assertEquals(33,lut.size)
-   val outputs=listOf(0xFF3C7080.toInt(),0xFF806C50.toInt(),0xFFB0B0B0.toInt()).map {lut.pixel(it,1f)}
-   assertTrue(outputs.toSet().size>1)
-  }
+ @Test fun bundledStylesDoNotReferenceThirdPartyLutAssets() {
+  assertTrue(ColorStyle.values().none {it.lutId!=null})
  }
 }
